@@ -65,7 +65,7 @@ provideManagerData()
 
             <div class="mt-auto hidden px-5 pb-3 lg:block">
               <a
-                href="https://github.com/llds66/do-shelf"
+                href="https://doshelf.llds.cloud/"
                 target="_blank"
                 rel="noopener noreferrer"
                 class="project-link no-underline flex items-center justify-center gap-3 text-[13px] font-700 text-neutral-400"

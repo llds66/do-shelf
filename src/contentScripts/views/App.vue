@@ -162,9 +162,9 @@ function toggleCategorySelection(categoryId: string) {
   updateCategorySelection(categoryId, !isCategorySelected(categoryId))
 }
 
-async function openManagerPage() {
+async function openManagerPage(openCategoryManager = false) {
   try {
-    await browser.runtime.sendMessage({ type: 'open-manager-page' })
+    await browser.runtime.sendMessage({ type: 'open-manager-page', openCategoryManager })
     closePanel()
   } catch {
     showSuccessMessage('打开分类管理失败')
@@ -379,14 +379,24 @@ onBeforeUnmount(() => {
         </div>
 
         <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px">
-          <button
-            type="button"
-            class="category-manager-link"
-            :disabled="isSaving"
-            @click="openManagerPage"
-          >
-            管理你的分类
-          </button>
+          <div class="flex gap-2">
+            <button
+              type="button"
+              class="category-manager-link"
+              :disabled="isSaving"
+              @click="openManagerPage(true)"
+            >
+              分类管理
+            </button>
+            <button
+              type="button"
+              class="category-manager-link"
+              :disabled="isSaving"
+              @click="openManagerPage()"
+            >
+              查看全部
+            </button>
+          </div>
 
           <div style="display: flex; justify-content: flex-end; gap: 8px">
             <n-button size="small" :disabled="isSaving" @click="closePanel">取消</n-button>

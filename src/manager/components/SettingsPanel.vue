@@ -145,6 +145,10 @@ function openClearConfirm() {
   showClearConfirm.value = true
 }
 
+async function openExternalLink(url: string) {
+  await browser.tabs.create({ url })
+}
+
 function resetClearState() {
   showClearConfirm.value = false
   clearConfirmText.value = ''
@@ -257,13 +261,23 @@ async function handleExportData() {
 
         <n-card :bordered="false" title="相关链接">
           <div class="my-4 flex flex-wrap gap-4">
-            <n-button secondary text :loading="isImporting" @click="handleImportData">
+            <n-button
+              secondary
+              text
+              :loading="isImporting"
+              @click="openExternalLink('https://doshelf.llds.cloud/')"
+            >
               <template #icon>
                 <div class="i-lucide-link h-[16px] w-[16px] text-[16px]" />
               </template>
               官方网站
             </n-button>
-            <n-button secondary text :loading="isImporting" @click="handleImportData">
+            <n-button
+              secondary
+              text
+              :loading="isImporting"
+              @click="openExternalLink('https://github.com/llds66/do-shelf')"
+            >
               <template #icon>
                 <div class="i-lucide-github h-[16px] w-[16px] text-[16px]" />
               </template>

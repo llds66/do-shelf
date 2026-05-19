@@ -20,7 +20,11 @@ browser.runtime.onMessage.addListener((message) => {
   if (!message || typeof message !== 'object' || !('type' in message)) return undefined
   if (message.type !== 'open-manager-page') return undefined
 
+  const managerPath = message.openCategoryManager
+    ? 'dist/manager/index.html?openCategoryManager=1'
+    : 'dist/manager/index.html'
+
   return browser.tabs.create({
-    url: browser.runtime.getURL('dist/manager/index.html?openCategoryManager=1'),
+    url: browser.runtime.getURL(managerPath),
   })
 })
