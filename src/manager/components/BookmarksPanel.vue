@@ -39,6 +39,7 @@ const removingBookmarkId = ref('')
 const removingFromCategoryBookmarkId = ref('')
 const showCategoryManager = ref(false)
 const newCategory = ref('')
+const bookmarkSearchKeyword = ref('')
 const isAddingCategory = ref(false)
 const deletingCategoryId = ref('')
 const managerCategories = computed(() =>
@@ -48,6 +49,25 @@ const categoryNamesById = computed(
   () => new Map(categories.value.map((category) => [category.id, category.name] as const)),
 )
 const isAllCategoryViewSelected = computed(() => selectedCategoryId.value === ALL_CATEGORY_VIEW_ID)
+const normalizedBookmarkSearchKeyword = computed(() =>
+  bookmarkSearchKeyword.value.trim().toLocaleLowerCase(),
+)
+const hasBookmarkSearchKeyword = computed(() => Boolean(normalizedBookmarkSearchKeyword.value))
+const bookmarkSearchPlaceholder = computed(() =>
+  selectedCategory.value ? `搜索「${selectedCategory.value.name}」中的收藏` : '搜索收藏',
+)
+const filteredBookmarks = computed(() => {
+  const keyword = normalizedBookmarkSearchKeyword.value
+  if (!keyword) return selectedBookmarks.value
+
+  return selectedBookmarks.value.filter((bookmark) =>
+    bookmark.title.toLocaleLowerCase().includes(keyword),
+  )
+})
+const emptyDescription = computed(() => {
+  if (hasBookmarkSearchKeyword.value) return '没有找到匹配的收藏'
+  return selectedCategory.value ? '当前分类暂无收藏' : '无'
+})
 
 async function openBookmark(url: string) {
   await browser.tabs.create({ url })
@@ -213,12 +233,26 @@ onMounted(() => {
         分类管理
       </n-button>
     </div>
+
+    <div class="mt-4">
+      <n-input
+        v-model:value="bookmarkSearchKeyword"
+        clearable
+        size="large"
+        round
+        :placeholder="bookmarkSearchPlaceholder"
+      >
+        <template #prefix>
+          <div class="i-lucide-search h-[16px] w-[16px] text-[16px] text-neutral-500" />
+        </template>
+      </n-input>
+    </div>
   </div>
 
   <n-scrollbar class="min-h-0 flex-1 py-5">
-    <section v-if="selectedBookmarks.length" class="flex flex-col gap-3">
+    <section v-if="filteredBookmarks.length" class="flex flex-col gap-3">
       <n-card
-        v-for="bookmark in selectedBookmarks"
+        v-for="bookmark in filteredBookmarks"
         :key="bookmark.id"
         :bordered="false"
         content-class="!p-0"
@@ -321,7 +355,7 @@ onMounted(() => {
     </section>
 
     <section v-else class="flex min-h-full items-center justify-center py-10">
-      <n-empty :description="selectedCategory ? '当前分类暂无收藏' : '无'" />
+      <n-empty :description="emptyDescription" />
     </section>
   </n-scrollbar>
 

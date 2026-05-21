@@ -1,5 +1,19 @@
 import browser from 'webextension-polyfill'
 
+interface OpenManagerPageMessage {
+  type: 'open-manager-page'
+  openCategoryManager?: boolean
+}
+
+function isOpenManagerPageMessage(message: unknown): message is OpenManagerPageMessage {
+  return (
+    typeof message === 'object' &&
+    message !== null &&
+    'type' in message &&
+    message.type === 'open-manager-page'
+  )
+}
+
 // only on dev mode
 if (import.meta.hot) {
   // @ts-expect-error for background HMR
@@ -17,8 +31,7 @@ browser.action.onClicked.addListener((): void => {
 })
 
 browser.runtime.onMessage.addListener((message) => {
-  if (!message || typeof message !== 'object' || !('type' in message)) return undefined
-  if (message.type !== 'open-manager-page') return undefined
+  if (!isOpenManagerPageMessage(message)) return undefined
 
   const managerPath = message.openCategoryManager
     ? 'dist/manager/index.html?openCategoryManager=1'
