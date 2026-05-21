@@ -261,12 +261,7 @@ async function handleExportData() {
 
         <n-card :bordered="false" title="相关链接">
           <div class="my-4 flex flex-wrap gap-4">
-            <n-button
-              secondary
-              text
-              :loading="isImporting"
-              @click="openExternalLink('https://doshelf.llds.cloud/')"
-            >
+            <n-button secondary text @click="openExternalLink('https://doshelf.llds.cloud/')">
               <template #icon>
                 <div class="i-lucide-link h-[16px] w-[16px] text-[16px]" />
               </template>
@@ -275,7 +270,20 @@ async function handleExportData() {
             <n-button
               secondary
               text
-              :loading="isImporting"
+              @click="
+                openExternalLink(
+                  'https://microsoftedge.microsoft.com/addons/detail/doshelf/bmloldgelbkhglnaoghflbfdbojogfjg',
+                )
+              "
+            >
+              <template #icon>
+                <div class="i-logos-microsoft-edge h-[16px] w-[16px] text-[16px]" />
+              </template>
+              Edge扩展商店
+            </n-button>
+            <n-button
+              secondary
+              text
               @click="openExternalLink('https://github.com/llds66/do-shelf')"
             >
               <template #icon>
