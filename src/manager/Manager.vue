@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import browser from 'webextension-polyfill'
 import { darkTheme } from 'naive-ui'
 import { ref } from 'vue'
 import BookmarksPanel from './components/BookmarksPanel.vue'
@@ -18,6 +19,7 @@ const menuOptions = NAV_ITEMS.map((item) => ({
   label: item.label,
   key: item.key,
 }))
+const appVersion = browser.runtime.getManifest().version || '0.0.0'
 
 provideManagerData()
 </script>
@@ -68,10 +70,11 @@ provideManagerData()
                 href="https://doshelf.llds.cloud/"
                 target="_blank"
                 rel="noopener noreferrer"
-                class="project-link no-underline flex items-center justify-center gap-3 text-[13px] font-700 text-neutral-400"
+                class="project-link no-underline flex items-center justify-center gap-3 text-[13px] text-neutral-400"
               >
                 <img :src="logoUrl" alt="DoShelf logo" class="h-6 w-6 rounded-md object-cover" />
-                <span class="mt-1">DoShelf</span>
+                <span class="mt-1 font-700 text-neutral-300">DoShelf</span>
+                <span class="mt-1 text-[11px] text-neutral-500">v{{ appVersion }}</span>
               </a>
             </div>
           </section>
