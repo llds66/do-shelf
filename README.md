@@ -4,6 +4,11 @@
 </p>
 <p align="center">DoShelf 是一个用于收藏管理 Linux.do 帖子的浏览器扩展，帮助你收藏整理感兴趣的帖子。</p>
 
+## 安装
+
+[Edge 扩展商店](https://microsoftedge.microsoft.com/addons/detail/doshelf/bmloldgelbkhglnaoghflbfdbojogfjg)
+
+[ZIP 安装](https://doshelf.llds.cloud/install)
 
 ## 截图
 
@@ -50,5 +55,3 @@ pnpm format
 ## LINUX DO
 
 [**LINUX DO 社区**](https://linux.do) (真诚 、友善 、团结 、专业)
-
-
