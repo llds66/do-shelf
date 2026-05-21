@@ -12,11 +12,13 @@ import {
   deleteBookmark,
   removeBookmarkFromCategory,
   removeCategory,
+  saveBookmarkInCategories,
 } from '~/shared/storage'
 
 const BOOKMARK_ACTION_OPTIONS = [
   { label: '打开链接', key: 'open' },
   { label: '复制链接', key: 'copy' },
+  { label: '编辑分类', key: 'edit-categories' },
 ] as const
 
 type BookmarkActionKey = (typeof BOOKMARK_ACTION_OPTIONS)[number]['key']
@@ -38,9 +40,13 @@ const {
 const removingBookmarkId = ref('')
 const removingFromCategoryBookmarkId = ref('')
 const showCategoryManager = ref(false)
+const showEditCategoriesModal = ref(false)
 const newCategory = ref('')
 const bookmarkSearchKeyword = ref('')
+const editingBookmarkId = ref('')
+const editingCategoryIds = ref<string[]>([])
 const isAddingCategory = ref(false)
+const isSavingCategoryEdit = ref(false)
 const deletingCategoryId = ref('')
 const managerCategories = computed(() =>
   categoriesWithCounts.value.filter((category) => category.id !== ALL_CATEGORY_VIEW_ID),
@@ -54,7 +60,7 @@ const normalizedBookmarkSearchKeyword = computed(() =>
 )
 const hasBookmarkSearchKeyword = computed(() => Boolean(normalizedBookmarkSearchKeyword.value))
 const bookmarkSearchPlaceholder = computed(() =>
-  selectedCategory.value ? `搜索「${selectedCategory.value.name}」中的收藏` : '搜索收藏',
+  selectedCategory.value ? `搜索「${selectedCategory.value.name}」中的收藏` : '搜索分类中的收藏',
 )
 const filteredBookmarks = computed(() => {
   const keyword = normalizedBookmarkSearchKeyword.value
@@ -68,6 +74,10 @@ const emptyDescription = computed(() => {
   if (hasBookmarkSearchKeyword.value) return '没有找到匹配的收藏'
   return selectedCategory.value ? '当前分类暂无收藏' : '无'
 })
+const editingBookmark = computed(
+  () => shelfData.value.bookmarks.find((bookmark) => bookmark.id === editingBookmarkId.value),
+)
+const displayCategories = computed(() => categories.value)
 
 async function openBookmark(url: string) {
   await browser.tabs.create({ url })
@@ -126,11 +136,59 @@ async function handleBookmarkAction(action: string, bookmark: BookmarkRecord) {
     return
   }
 
+  if (action === 'edit-categories') {
+    openEditCategoriesModal(bookmark)
+    return
+  }
+
   if (action === 'copy') await copyBookmarkUrl(bookmark.url)
 }
 
 function openCategoryManager() {
   showCategoryManager.value = true
+}
+
+function getBookmarkCategoryIds(bookmarkId: string) {
+  return shelfData.value.categoryBookmarks
+    .filter((relation) => relation.bookmarkId === bookmarkId)
+    .sort((left, right) => left.order - right.order)
+    .map((relation) => relation.categoryId)
+}
+
+function resetEditCategoriesState() {
+  showEditCategoriesModal.value = false
+  editingBookmarkId.value = ''
+  editingCategoryIds.value = []
+}
+
+function openEditCategoriesModal(bookmark: BookmarkRecord) {
+  editingBookmarkId.value = bookmark.id
+  editingCategoryIds.value = getBookmarkCategoryIds(bookmark.id)
+  showEditCategoriesModal.value = true
+}
+
+function closeEditCategoriesModal() {
+  if (isSavingCategoryEdit.value) return
+  resetEditCategoriesState()
+}
+
+function isEditingCategorySelected(categoryId: string) {
+  return editingCategoryIds.value.includes(categoryId)
+}
+
+function updateEditingCategorySelection(categoryId: string, checked: boolean) {
+  if (isSavingCategoryEdit.value) return
+
+  if (checked) {
+    editingCategoryIds.value = Array.from(new Set([...editingCategoryIds.value, categoryId]))
+    return
+  }
+
+  editingCategoryIds.value = editingCategoryIds.value.filter((id) => id !== categoryId)
+}
+
+function toggleEditingCategorySelection(categoryId: string) {
+  updateEditingCategorySelection(categoryId, !isEditingCategorySelected(categoryId))
 }
 
 function openCategoryManagerFromUrl() {
@@ -150,11 +208,42 @@ function getCategoryDisplayName(category: CategoryWithCount) {
 }
 
 function getBookmarkCategoryNames(bookmarkId: string) {
-  return shelfData.value.categoryBookmarks
-    .filter((relation) => relation.bookmarkId === bookmarkId)
-    .sort((left, right) => left.order - right.order)
-    .map((relation) => categoryNamesById.value.get(relation.categoryId))
+  return getBookmarkCategoryIds(bookmarkId)
+    .map((categoryId) => categoryNamesById.value.get(categoryId))
     .filter((name): name is string => Boolean(name))
+}
+
+async function handleConfirmEditCategories() {
+  const bookmark = editingBookmark.value
+  if (!bookmark || isSavingCategoryEdit.value) return
+
+  isSavingCategoryEdit.value = true
+
+  try {
+    const nextCategoryIds = [...editingCategoryIds.value]
+
+    if (!nextCategoryIds.length) {
+      await deleteBookmark(bookmark.id)
+      await refreshData()
+      showSuccessMessage('已取消收藏')
+      resetEditCategoriesState()
+      return
+    }
+
+    await saveBookmarkInCategories({
+      bookmarkId: bookmark.id,
+      title: bookmark.title,
+      url: bookmark.url,
+      faviconUrl: bookmark.faviconUrl,
+      categoryIds: nextCategoryIds,
+    })
+
+    await refreshData()
+    showSuccessMessage('收藏分类已更新')
+    resetEditCategoriesState()
+  } finally {
+    isSavingCategoryEdit.value = false
+  }
 }
 
 async function handleAddCategory() {
@@ -419,6 +508,59 @@ onMounted(() => {
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  </n-modal>
+
+  <n-modal
+    :show="showEditCategoriesModal"
+    preset="card"
+    class="edit-categories-modal w-[min(520px,calc(100vw-32px))]"
+    :bordered="false"
+    title="编辑分类"
+    segmented
+    @update:show="(show: boolean) => !show && closeEditCategoriesModal()"
+  >
+    <div class="flex flex-col gap-5">
+      <div class="flex flex-wrap gap-2">
+        <div
+          v-for="category in displayCategories"
+          :key="`edit-category-${category.id}`"
+          class="inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm text-neutral-100 transition"
+          :class="
+            isEditingCategorySelected(category.id)
+              ? 'border-white/30 bg-white/12'
+              : 'border-white/8 bg-white/4'
+          "
+          :style="{
+            cursor: isSavingCategoryEdit ? 'default' : 'pointer',
+            opacity: isSavingCategoryEdit ? '0.72' : '1',
+          }"
+          @click="toggleEditingCategorySelection(category.id)"
+        >
+          <n-checkbox
+            :checked="isEditingCategorySelected(category.id)"
+            :disabled="isSavingCategoryEdit"
+            @click.stop
+            @update:checked="
+              (checked: boolean) => updateEditingCategorySelection(category.id, checked)
+            "
+          />
+          <span>{{ category.name }}</span>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-end gap-2">
+        <n-button :disabled="isSavingCategoryEdit" @click="closeEditCategoriesModal">
+          取消
+        </n-button>
+        <n-button
+          type="primary"
+          :loading="isSavingCategoryEdit"
+          @click="handleConfirmEditCategories"
+        >
+          确认
+        </n-button>
       </div>
     </div>
   </n-modal>
