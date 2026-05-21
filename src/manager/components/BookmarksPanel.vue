@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import Sortable from 'sortablejs'
 import browser from 'webextension-polyfill'
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useManagerData } from '../useManagerData'
 import {
   ALL_CATEGORY_VIEW_ID,
@@ -12,6 +13,8 @@ import {
   deleteBookmark,
   removeBookmarkFromCategory,
   removeCategory,
+  reorderBookmarksInCategory,
+  reorderCategories,
   saveBookmarkInCategories,
 } from '~/shared/storage'
 
@@ -41,11 +44,18 @@ const removingBookmarkId = ref('')
 const removingFromCategoryBookmarkId = ref('')
 const showCategoryManager = ref(false)
 const showEditCategoriesModal = ref(false)
+const showBookmarkSearch = ref(false)
 const newCategory = ref('')
 const bookmarkSearchKeyword = ref('')
 const editingBookmarkId = ref('')
 const editingCategoryIds = ref<string[]>([])
+const bookmarkListRef = ref<HTMLElement | null>(null)
+const bookmarkListItems = ref<BookmarkRecord[]>([])
+const categoryManagerListRef = ref<HTMLElement | null>(null)
+const managerCategoryItems = ref<CategoryWithCount[]>([])
 const isAddingCategory = ref(false)
+const isReorderingBookmarks = ref(false)
+const isReorderingCategories = ref(false)
 const isSavingCategoryEdit = ref(false)
 const deletingCategoryId = ref('')
 const managerCategories = computed(() =>
@@ -74,10 +84,18 @@ const emptyDescription = computed(() => {
   if (hasBookmarkSearchKeyword.value) return '没有找到匹配的收藏'
   return selectedCategory.value ? '当前分类暂无收藏' : '无'
 })
-const editingBookmark = computed(
-  () => shelfData.value.bookmarks.find((bookmark) => bookmark.id === editingBookmarkId.value),
+const canDragSortBookmarks = computed(
+  () =>
+    !isAllCategoryViewSelected.value &&
+    !hasBookmarkSearchKeyword.value &&
+    bookmarkListItems.value.length > 1,
+)
+const editingBookmark = computed(() =>
+  shelfData.value.bookmarks.find((bookmark) => bookmark.id === editingBookmarkId.value),
 )
 const displayCategories = computed(() => categories.value)
+let bookmarkListSortable: Sortable | null = null
+let categoryManagerSortable: Sortable | null = null
 
 async function openBookmark(url: string) {
   await browser.tabs.create({ url })
@@ -146,6 +164,125 @@ async function handleBookmarkAction(action: string, bookmark: BookmarkRecord) {
 
 function openCategoryManager() {
   showCategoryManager.value = true
+}
+
+function toggleBookmarkSearch() {
+  showBookmarkSearch.value = !showBookmarkSearch.value
+
+  if (!showBookmarkSearch.value) bookmarkSearchKeyword.value = ''
+}
+
+function syncBookmarkListItems() {
+  bookmarkListItems.value = [...filteredBookmarks.value]
+}
+
+function destroyBookmarkListSortable() {
+  bookmarkListSortable?.destroy()
+  bookmarkListSortable = null
+}
+
+async function handleBookmarkSortChange(oldIndex: number, newIndex: number) {
+  if (
+    isReorderingBookmarks.value ||
+    oldIndex === newIndex ||
+    isAllCategoryViewSelected.value ||
+    hasBookmarkSearchKeyword.value
+  )
+    return
+
+  const nextItems = [...bookmarkListItems.value]
+  const [movedBookmark] = nextItems.splice(oldIndex, 1)
+  if (!movedBookmark) return
+
+  nextItems.splice(newIndex, 0, movedBookmark)
+  bookmarkListItems.value = nextItems
+  isReorderingBookmarks.value = true
+
+  try {
+    await reorderBookmarksInCategory(
+      selectedCategoryId.value,
+      nextItems.map((bookmark) => bookmark.id),
+    )
+    await refreshData()
+    showSuccessMessage('当前分类中的收藏顺序已更新')
+  } catch {
+    syncBookmarkListItems()
+    showErrorMessage('收藏排序更新失败')
+  } finally {
+    isReorderingBookmarks.value = false
+  }
+}
+
+function setupBookmarkListSortable() {
+  if (!bookmarkListRef.value || !canDragSortBookmarks.value) return
+
+  destroyBookmarkListSortable()
+
+  bookmarkListSortable = Sortable.create(bookmarkListRef.value, {
+    animation: 180,
+    easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+    handle: '.bookmark-drag-handle',
+    draggable: '.bookmark-list-item',
+    ghostClass: 'bookmark-sort-ghost',
+    chosenClass: 'bookmark-sort-chosen',
+    dragClass: 'bookmark-sort-drag',
+    onEnd: (event: { oldIndex?: number; newIndex?: number }) => {
+      if (event.oldIndex == null || event.newIndex == null) return
+      void handleBookmarkSortChange(event.oldIndex, event.newIndex)
+    },
+  })
+}
+
+function syncManagerCategoryItems() {
+  managerCategoryItems.value = [...managerCategories.value]
+}
+
+function destroyCategoryManagerSortable() {
+  categoryManagerSortable?.destroy()
+  categoryManagerSortable = null
+}
+
+async function handleCategorySortChange(oldIndex: number, newIndex: number) {
+  if (isReorderingCategories.value || oldIndex === newIndex) return
+
+  const nextItems = [...managerCategoryItems.value]
+  const [movedCategory] = nextItems.splice(oldIndex, 1)
+  if (!movedCategory) return
+
+  nextItems.splice(newIndex, 0, movedCategory)
+  managerCategoryItems.value = nextItems
+  isReorderingCategories.value = true
+
+  try {
+    await reorderCategories(nextItems.map((category) => category.id))
+    await refreshData()
+    showSuccessMessage('分类顺序已更新')
+  } catch {
+    syncManagerCategoryItems()
+    showErrorMessage('分类排序更新失败')
+  } finally {
+    isReorderingCategories.value = false
+  }
+}
+
+function setupCategoryManagerSortable() {
+  if (!categoryManagerListRef.value) return
+
+  destroyCategoryManagerSortable()
+
+  categoryManagerSortable = Sortable.create(categoryManagerListRef.value, {
+    animation: 180,
+    easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+    handle: '.category-manager-drag-handle',
+    draggable: '.category-manager-item',
+    ghostClass: 'category-manager-sort-ghost',
+    chosenClass: 'category-manager-sort-chosen',
+    dragClass: 'category-manager-sort-drag',
+    onEnd: (event: any) => {
+      if (event.oldIndex == null || event.newIndex == null) return
+      void handleCategorySortChange(event.oldIndex, event.newIndex)
+    },
+  })
 }
 
 function getBookmarkCategoryIds(bookmarkId: string) {
@@ -288,8 +425,52 @@ async function handleDeleteCategory(category: CategoryWithCount) {
   }
 }
 
+watch(
+  [filteredBookmarks, canDragSortBookmarks],
+  async () => {
+    syncBookmarkListItems()
+
+    if (!canDragSortBookmarks.value) {
+      destroyBookmarkListSortable()
+      return
+    }
+
+    await nextTick()
+    setupBookmarkListSortable()
+  },
+  { immediate: true },
+)
+
+watch(
+  managerCategories,
+  async () => {
+    syncManagerCategoryItems()
+
+    if (!showCategoryManager.value) return
+
+    await nextTick()
+    setupCategoryManagerSortable()
+  },
+  { immediate: true },
+)
+
+watch(showCategoryManager, async (show) => {
+  if (!show) {
+    destroyCategoryManagerSortable()
+    return
+  }
+
+  await nextTick()
+  setupCategoryManagerSortable()
+})
+
 onMounted(() => {
   openCategoryManagerFromUrl()
+})
+
+onBeforeUnmount(() => {
+  destroyBookmarkListSortable()
+  destroyCategoryManagerSortable()
 })
 </script>
 
@@ -321,9 +502,16 @@ onMounted(() => {
         </template>
         分类管理
       </n-button>
+
+      <n-button secondary class="shrink-0" @click="toggleBookmarkSearch">
+        <template #icon>
+          <div class="i-lucide-search h-[16px] w-[16px] text-[16px]" />
+        </template>
+        {{ showBookmarkSearch ? '关闭搜索' : '搜索' }}
+      </n-button>
     </div>
 
-    <div class="mt-4">
+    <div v-if="showBookmarkSearch" class="mt-4">
       <n-input
         v-model:value="bookmarkSearchKeyword"
         clearable
@@ -339,108 +527,129 @@ onMounted(() => {
   </div>
 
   <n-scrollbar class="min-h-0 flex-1 py-5">
-    <section v-if="filteredBookmarks.length" class="flex flex-col gap-3">
-      <n-card
-        v-for="bookmark in filteredBookmarks"
-        :key="bookmark.id"
-        :bordered="false"
-        content-class="!p-0"
-      >
-        <div class="flex items-center gap-3 px-4 py-3">
-          <img
-            v-if="bookmark.faviconUrl"
-            :src="bookmark.faviconUrl"
-            alt=""
-            class="h-5 w-5 shrink-0 rounded-sm"
-          />
-
-          <div class="min-w-0 flex-1">
-            <n-button
-              text
-              class="w-full justify-start !px-0 text-left !text-[15px] !font-700 !text-neutral-300 hover:text-neutral-100!"
-              @click="openBookmark(bookmark.url)"
+    <section v-if="bookmarkListItems.length" class="flex flex-col gap-3">
+      <div ref="bookmarkListRef" class="flex flex-col gap-3">
+        <n-card
+          v-for="bookmark in bookmarkListItems"
+          :key="bookmark.id"
+          class="bookmark-list-item"
+          :bordered="false"
+          content-class="!p-0"
+        >
+          <div class="flex items-center gap-3 px-4 py-3">
+            <button
+              v-if="!isAllCategoryViewSelected"
+              type="button"
+              class="bookmark-drag-handle inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/8 bg-white/3 text-neutral-400 transition hover:border-white/14 hover:text-neutral-200"
+              :class="
+                canDragSortBookmarks
+                  ? 'cursor-grab active:cursor-grabbing'
+                  : 'cursor-not-allowed opacity-60'
+              "
+              :disabled="!canDragSortBookmarks || isReorderingBookmarks"
+              :aria-label="hasBookmarkSearchKeyword ? '搜索结果中暂不支持排序' : '拖动排序'"
+              :title="hasBookmarkSearchKeyword ? '搜索结果中暂不支持排序' : '拖动排序'"
             >
-              <n-ellipsis>
-                {{ bookmark.title }}
-              </n-ellipsis>
-            </n-button>
+              <div class="i-lucide-grip h-[16px] w-[16px] text-[16px]" />
+            </button>
 
-            <div
-              v-if="getBookmarkCategoryNames(bookmark.id).length"
-              class="mt-2 flex flex-wrap gap-1.5"
-            >
-              <n-tag
-                v-for="categoryName in getBookmarkCategoryNames(bookmark.id)"
-                :key="`${bookmark.id}-${categoryName}`"
-                size="small"
-                round
-                :bordered="false"
-                class="bg-white/8!"
+            <img
+              v-if="bookmark.faviconUrl"
+              :src="bookmark.faviconUrl"
+              alt=""
+              class="h-5 w-5 shrink-0 rounded-sm"
+            />
+
+            <div class="min-w-0 flex-1">
+              <div class="flex flex-wrap items-center gap-2">
+                <n-button
+                  text
+                  class="min-w-0 flex-1 justify-start !px-0 text-left !text-[15px] !font-700 !text-neutral-300 hover:text-neutral-100!"
+                  @click="openBookmark(bookmark.url)"
+                >
+                  <n-ellipsis>
+                    {{ bookmark.title }}
+                  </n-ellipsis>
+                </n-button>
+
+                <div
+                  v-if="getBookmarkCategoryNames(bookmark.id).length"
+                  class="flex flex-wrap gap-1.5"
+                >
+                  <n-tag
+                    v-for="categoryName in getBookmarkCategoryNames(bookmark.id)"
+                    :key="`${bookmark.id}-${categoryName}`"
+                    size="small"
+                    round
+                    :bordered="false"
+                    class="bg-white/8!"
+                  >
+                    {{ categoryName }}
+                  </n-tag>
+                </div>
+              </div>
+            </div>
+
+            <div class="flex shrink-0 items-center gap-2">
+              <n-dropdown
+                trigger="click"
+                :options="BOOKMARK_ACTION_OPTIONS"
+                @select="(key: string) => handleBookmarkAction(key as BookmarkActionKey, bookmark)"
               >
-                {{ categoryName }}
-              </n-tag>
+                <n-button
+                  text
+                  quaternary
+                  circle
+                  class="!h-8 !w-8 !text-neutral-300 hover:!text-white"
+                >
+                  <div class="i-lucide-ellipsis h-[18px] w-[18px] text-[18px]" />
+                </n-button>
+              </n-dropdown>
+
+              <n-popconfirm
+                v-if="!isAllCategoryViewSelected"
+                positive-text="确认"
+                :negative-text="null"
+                @positive-click="handleRemoveBookmarkFromCurrentCategory(bookmark.id)"
+              >
+                <template #trigger>
+                  <n-button
+                    text
+                    quaternary
+                    circle
+                    class="!h-8 !w-8 !text-neutral-300 hover:!text-white"
+                    :loading="removingFromCategoryBookmarkId === bookmark.id"
+                  >
+                    <div class="i-lucide-trash-2 h-[18px] w-[18px] text-[18px]" />
+                  </n-button>
+                </template>
+                该标签将从此分类移除
+              </n-popconfirm>
+
+              <n-popconfirm
+                v-else
+                positive-text="确认"
+                :negative-text="null"
+                @positive-click="handleDeleteBookmark(bookmark.id)"
+              >
+                <template #trigger>
+                  <n-button
+                    text
+                    type="error"
+                    quaternary
+                    circle
+                    class="!h-8 !w-8 !text-neutral-300 hover:!text-white"
+                    :loading="removingBookmarkId === bookmark.id"
+                  >
+                    <div class="i-lucide-trash-2 h-[18px] w-[18px] text-[18px]" />
+                  </n-button>
+                </template>
+                该收藏将从所有分类移除
+              </n-popconfirm>
             </div>
           </div>
-
-          <div class="flex shrink-0 items-center gap-2">
-            <n-dropdown
-              trigger="click"
-              :options="BOOKMARK_ACTION_OPTIONS"
-              @select="(key: string) => handleBookmarkAction(key as BookmarkActionKey, bookmark)"
-            >
-              <n-button
-                text
-                quaternary
-                circle
-                class="!h-8 !w-8 !text-neutral-300 hover:!text-white"
-              >
-                <div class="i-lucide-ellipsis h-[18px] w-[18px] text-[18px]" />
-              </n-button>
-            </n-dropdown>
-
-            <n-popconfirm
-              v-if="!isAllCategoryViewSelected"
-              positive-text="确认"
-              :negative-text="null"
-              @positive-click="handleRemoveBookmarkFromCurrentCategory(bookmark.id)"
-            >
-              <template #trigger>
-                <n-button
-                  text
-                  quaternary
-                  circle
-                  class="!h-8 !w-8 !text-neutral-300 hover:!text-white"
-                  :loading="removingFromCategoryBookmarkId === bookmark.id"
-                >
-                  <div class="i-lucide-trash-2 h-[18px] w-[18px] text-[18px]" />
-                </n-button>
-              </template>
-              该标签将从此分类移除
-            </n-popconfirm>
-
-            <n-popconfirm
-              v-else
-              positive-text="确认"
-              :negative-text="null"
-              @positive-click="handleDeleteBookmark(bookmark.id)"
-            >
-              <template #trigger>
-                <n-button
-                  text
-                  type="error"
-                  quaternary
-                  circle
-                  class="!h-8 !w-8 !text-neutral-300 hover:!text-white"
-                  :loading="removingBookmarkId === bookmark.id"
-                >
-                  <div class="i-lucide-trash-2 h-[18px] w-[18px] text-[18px]" />
-                </n-button>
-              </template>
-              该收藏将从所有分类移除
-            </n-popconfirm>
-          </div>
-        </div>
-      </n-card>
+        </n-card>
+      </div>
     </section>
 
     <section v-else class="flex min-h-full items-center justify-center py-10">
@@ -469,14 +678,29 @@ onMounted(() => {
         </n-button>
       </div>
 
-      <div class="category-manager-scroll h-[400px] overflow-y-auto pr-1">
-        <div class="flex flex-col gap-1.5">
+      <div class="flex items-center gap-2 text-[12px] text-neutral-400">
+        <div class="i-lucide-grip h-[14px] w-[14px] text-[14px]" />
+        <span>拖动左侧手柄调整分类顺序</span>
+      </div>
+
+      <div class="category-manager-scroll h-[370px] overflow-y-auto pr-1">
+        <div ref="categoryManagerListRef" class="flex flex-col gap-1.5">
           <div
-            v-for="category in managerCategories"
+            v-for="category in managerCategoryItems"
             :key="category.id"
-            class="flex items-center justify-between gap-2 rounded-xl border border-white/8 bg-white/4 px-3 py-2.5"
+            class="category-manager-item flex items-center justify-between gap-2 rounded-xl border border-white/8 bg-white/4 px-3 py-2.5 transition-colors"
           >
             <div class="min-w-0 flex items-center gap-2.5">
+              <button
+                type="button"
+                class="category-manager-drag-handle inline-flex h-8 w-8 shrink-0 cursor-grab items-center justify-center rounded-full border border-white/8 bg-white/3 text-neutral-400 transition hover:border-white/14 hover:text-neutral-200 active:cursor-grabbing"
+                :disabled="isReorderingCategories"
+                aria-label="拖动排序"
+                title="拖动排序"
+              >
+                <div class="i-lucide-grip h-[16px] w-[16px] text-[16px]" />
+              </button>
+
               <div class="truncate text-[14px] font-700 text-white">
                 {{ getCategoryDisplayName(category) }}
               </div>
@@ -498,6 +722,7 @@ onMounted(() => {
                     text
                     type="error"
                     size="small"
+                    :disabled="isReorderingCategories"
                     :loading="deletingCategoryId === category.id"
                   >
                     删除
@@ -611,6 +836,46 @@ onMounted(() => {
 .category-manager-scroll::-webkit-scrollbar-thumb {
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.28);
+}
+
+.bookmark-list-item {
+  will-change: transform;
+}
+
+.bookmark-list-item.bookmark-sort-ghost {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  opacity: 0.72;
+}
+
+.bookmark-list-item.bookmark-sort-chosen {
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 20px 36px rgba(0, 0, 0, 0.18);
+}
+
+.bookmark-list-item.bookmark-sort-drag {
+  opacity: 0.98;
+}
+
+.category-manager-item {
+  will-change: transform;
+}
+
+.category-manager-item.category-manager-sort-ghost {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  opacity: 0.72;
+}
+
+.category-manager-item.category-manager-sort-chosen {
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.18);
+}
+
+.category-manager-item.category-manager-sort-drag {
+  opacity: 0.98;
 }
 
 :deep(.n-tabs .n-tabs-nav.n-tabs-nav--line-type.n-tabs-nav--top .n-tabs-nav-scroll-content) {

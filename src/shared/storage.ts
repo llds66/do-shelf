@@ -269,13 +269,15 @@ function normalizeShelfData(data: Partial<DoShelfData> | undefined): DoShelfData
   }
 
   for (const builtInCategory of DEFAULT_CATEGORIES) {
+    const existingCategory = categoriesById.get(builtInCategory.id)
+
     categoriesById.set(builtInCategory.id, {
       id: builtInCategory.id,
       name: builtInCategory.name,
       builtIn: true,
-      order: builtInCategory.order,
-      createdAt: categoriesById.get(builtInCategory.id)?.createdAt ?? builtInCategory.createdAt,
-      updatedAt: categoriesById.get(builtInCategory.id)?.updatedAt,
+      order: existingCategory?.order ?? builtInCategory.order,
+      createdAt: existingCategory?.createdAt ?? builtInCategory.createdAt,
+      updatedAt: existingCategory?.updatedAt,
     })
   }
 
@@ -377,6 +379,67 @@ export async function addCategory(name: string) {
   await saveShelfData(data)
 
   return nextCategory
+}
+
+export async function reorderCategories(categoryIds: string[]) {
+  const data = await getShelfData()
+  const uniqueCategoryIds = Array.from(new Set(categoryIds))
+  const orderById = new Map(uniqueCategoryIds.map((categoryId, index) => [categoryId, index]))
+  const orderedCategories = data.categories
+    .filter((category) => orderById.has(category.id))
+    .sort((left, right) => (orderById.get(left.id) ?? 0) - (orderById.get(right.id) ?? 0))
+  const remainingCategories = sortCategories(
+    data.categories.filter((category) => !orderById.has(category.id)),
+  )
+  const nextCategories = [...orderedCategories, ...remainingCategories]
+  const updatedAt = Date.now()
+
+  data.categories = nextCategories.map((category, index) => ({
+    ...category,
+    order: index,
+    updatedAt,
+  }))
+
+  await saveShelfData(data)
+
+  return data.categories
+}
+
+export async function reorderBookmarksInCategory(categoryId: string, bookmarkIds: string[]) {
+  const data = await getShelfData()
+  const currentRelations = data.categoryBookmarks
+    .filter((relation) => relation.categoryId === categoryId)
+    .sort((left, right) => {
+      if (left.order !== right.order) return left.order - right.order
+      if (left.createdAt !== right.createdAt) return left.createdAt - right.createdAt
+      return left.id.localeCompare(right.id)
+    })
+
+  if (!currentRelations.length) return []
+
+  const uniqueBookmarkIds = Array.from(new Set(bookmarkIds))
+  const relationByBookmarkId = new Map(
+    currentRelations.map((relation) => [relation.bookmarkId, relation] as const),
+  )
+  const orderedRelations = uniqueBookmarkIds
+    .map((bookmarkId) => relationByBookmarkId.get(bookmarkId))
+    .filter((relation): relation is CategoryBookmarkRecord => Boolean(relation))
+  const remainingRelations = currentRelations.filter(
+    (relation) => !uniqueBookmarkIds.includes(relation.bookmarkId),
+  )
+  const nextRelations = [...orderedRelations, ...remainingRelations].map((relation, index) => ({
+    ...relation,
+    order: index,
+  }))
+
+  data.categoryBookmarks = [
+    ...data.categoryBookmarks.filter((relation) => relation.categoryId !== categoryId),
+    ...nextRelations,
+  ]
+
+  await saveShelfData(data)
+
+  return nextRelations
 }
 
 export async function removeCategory(categoryId: string) {
