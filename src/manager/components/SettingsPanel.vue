@@ -1,13 +1,28 @@
 <script setup lang="ts">
+import NumberFlow from '@number-flow/vue'
 import browser from 'webextension-polyfill'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useManagerData } from '../useManagerData'
-import { SHELF_DATA_VERSION, type DoShelfData } from '~/shared/bookmarks'
+import {
+  buildCategorySelectionOptions,
+  buildExportDataByCategoryIds,
+  buildExportFilename,
+  buildShelfDataForImportByCategory,
+  parseImportedShelfData,
+  type CategorySelectionOption,
+  type ImportStrategy,
+} from '~/shared/import-export'
+import type { DoShelfData } from '~/shared/bookmarks'
 import { clearShelfData, getShelfData, saveShelfData } from '~/shared/storage'
-import NumberFlow from '@number-flow/vue'
 
-const { totalBookmarks, totalCategories, refreshData, showErrorMessage, showSuccessMessage } =
-  useManagerData()
+const {
+  totalBookmarks,
+  totalCategories,
+  refreshData,
+  shelfData,
+  showErrorMessage,
+  showSuccessMessage,
+} = useManagerData()
 const importInputRef = ref<HTMLInputElement | null>(null)
 const clearConfirmText = ref('')
 const isImporting = ref(false)
@@ -16,10 +31,27 @@ const isClearing = ref(false)
 const animatedTotalCategories = ref(0)
 const animatedTotalBookmarks = ref(0)
 const showImportConfirm = ref(false)
+const showExportConfirm = ref(false)
 const showClearConfirm = ref(false)
 const pendingImportFilename = ref('')
 const pendingImportData = ref<DoShelfData | null>(null)
+const exportCategoryIds = ref<string[]>([])
+const importCategoryIds = ref<string[]>([])
+const importStrategy = ref<ImportStrategy>('replace')
 const canConfirmClear = computed(() => clearConfirmText.value === 'do-shelf')
+const exportCategoryOptions = computed(() => buildCategorySelectionOptions(shelfData.value))
+const importCategoryOptions = computed<CategorySelectionOption[]>(() =>
+  pendingImportData.value ? buildCategorySelectionOptions(pendingImportData.value) : [],
+)
+const canConfirmImport = computed(
+  () => Boolean(pendingImportData.value) && importCategoryIds.value.length > 0,
+)
+const canConfirmExport = computed(() => exportCategoryIds.value.length > 0)
+const selectedExportCategoryLabels = computed(() =>
+  exportCategoryOptions.value
+    .filter((category) => exportCategoryIds.value.includes(category.id))
+    .map((category) => category.name),
+)
 let animationFrameId: number | null = null
 
 function syncAnimatedTotals() {
@@ -38,80 +70,76 @@ function syncAnimatedTotals() {
   })
 }
 
-onMounted(() => {
-  syncAnimatedTotals()
-})
-
-watch([totalCategories, totalBookmarks], () => {
-  syncAnimatedTotals()
-})
-
-onBeforeUnmount(() => {
-  if (animationFrameId !== null) cancelAnimationFrame(animationFrameId)
-})
-
-function buildExportFilename(exportedAt: number, appVersion: string) {
-  const now = new Date(exportedAt)
-  const parts = [
-    now.getFullYear(),
-    String(now.getMonth() + 1).padStart(2, '0'),
-    String(now.getDate()).padStart(2, '0'),
-    String(now.getHours()).padStart(2, '0'),
-    String(now.getMinutes()).padStart(2, '0'),
-    String(now.getSeconds()).padStart(2, '0'),
-  ]
-
-  return `do-shelf-export-v${appVersion}-${parts.join('')}.json`
+function resetExportSelection() {
+  exportCategoryIds.value = exportCategoryOptions.value.map((category) => category.id)
 }
 
-function buildExportData(data: DoShelfData, exportedAt: number, appVersion: string): DoShelfData {
-  return {
-    ...data,
-    meta: {
-      ...data.meta,
-      exportedAt,
-      appVersion,
-    },
-  }
+function resetImportOptions() {
+  importCategoryIds.value = importCategoryOptions.value.map((category) => category.id)
+  importStrategy.value = 'replace'
 }
 
-function handleImportData() {
+function updateSelectedCategoryIds(
+  target: typeof exportCategoryIds | typeof importCategoryIds,
+  id: string,
+  checked: boolean,
+) {
+  const nextIds = new Set(target.value)
+
+  if (checked) nextIds.add(id)
+  else nextIds.delete(id)
+
+  target.value = Array.from(nextIds)
+}
+
+function updateExportCategorySelection(id: string, checked: boolean) {
+  updateSelectedCategoryIds(exportCategoryIds, id, checked)
+}
+
+function updateImportCategorySelection(id: string, checked: boolean) {
+  updateSelectedCategoryIds(importCategoryIds, id, checked)
+}
+
+function openExportConfirm() {
+  if (isExporting.value) return
+
+  resetExportSelection()
+  showExportConfirm.value = true
+}
+
+function resetExportState() {
+  showExportConfirm.value = false
+  exportCategoryIds.value = []
+}
+
+function openImportPicker() {
   if (isImporting.value) return
 
   importInputRef.value?.click()
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
+function resetImportState() {
+  showImportConfirm.value = false
+  pendingImportFilename.value = ''
+  pendingImportData.value = null
+  importCategoryIds.value = []
+  importStrategy.value = 'replace'
 }
 
-function parseImportedShelfData(rawText: string) {
-  let parsed: unknown
+function openClearConfirm() {
+  if (isClearing.value) return
 
-  try {
-    parsed = JSON.parse(rawText)
-  } catch {
-    throw new Error('导入文件不是合法的 JSON')
-  }
+  clearConfirmText.value = ''
+  showClearConfirm.value = true
+}
 
-  if (!isRecord(parsed)) throw new Error('导入数据格式不正确')
+function resetClearState() {
+  showClearConfirm.value = false
+  clearConfirmText.value = ''
+}
 
-  if (parsed.version !== SHELF_DATA_VERSION)
-    throw new Error(`仅支持导入 version = ${SHELF_DATA_VERSION} 的数据`)
-
-  if (!Array.isArray(parsed.categories)) throw new Error('导入数据缺少 categories 数组')
-  if (!Array.isArray(parsed.bookmarks)) throw new Error('导入数据缺少 bookmarks 数组')
-  if (!Array.isArray(parsed.categoryBookmarks))
-    throw new Error('导入数据缺少 categoryBookmarks 数组')
-
-  return {
-    version: parsed.version,
-    meta: isRecord(parsed.meta) ? parsed.meta : {},
-    categories: parsed.categories,
-    bookmarks: parsed.bookmarks,
-    categoryBookmarks: parsed.categoryBookmarks,
-    settings: isRecord(parsed.settings) ? parsed.settings : {},
-  } satisfies DoShelfData
+async function openExternalLink(url: string) {
+  await browser.tabs.create({ url })
 }
 
 async function handleImportFileChange(event: Event) {
@@ -126,32 +154,11 @@ async function handleImportFileChange(event: Event) {
     const rawText = await file.text()
     pendingImportData.value = parseImportedShelfData(rawText)
     pendingImportFilename.value = file.name
+    resetImportOptions()
     showImportConfirm.value = true
   } catch (error) {
     showErrorMessage(error instanceof Error ? error.message : '导入文件解析失败')
   }
-}
-
-function resetImportState() {
-  showImportConfirm.value = false
-  pendingImportFilename.value = ''
-  pendingImportData.value = null
-}
-
-function openClearConfirm() {
-  if (isClearing.value) return
-
-  clearConfirmText.value = ''
-  showClearConfirm.value = true
-}
-
-async function openExternalLink(url: string) {
-  await browser.tabs.create({ url })
-}
-
-function resetClearState() {
-  showClearConfirm.value = false
-  clearConfirmText.value = ''
 }
 
 async function handleConfirmClear() {
@@ -172,24 +179,34 @@ async function handleConfirmClear() {
 }
 
 async function handleConfirmImport() {
-  if (!pendingImportData.value || isImporting.value) return
+  if (!pendingImportData.value || isImporting.value || !canConfirmImport.value) return
 
   isImporting.value = true
 
   try {
-    await saveShelfData(pendingImportData.value)
+    const currentData = await getShelfData()
+    const nextData = buildShelfDataForImportByCategory({
+      currentData,
+      importedData: pendingImportData.value,
+      categoryIds: importCategoryIds.value,
+      strategy: importStrategy.value,
+    })
+
+    await saveShelfData(nextData)
     await refreshData()
-    showSuccessMessage('导入成功')
+    showSuccessMessage(
+      importStrategy.value === 'replace' ? '按分类覆盖导入成功' : '按分类合并导入成功',
+    )
     resetImportState()
-  } catch {
-    showErrorMessage('导入失败')
+  } catch (error) {
+    showErrorMessage(error instanceof Error ? error.message : '导入失败')
   } finally {
     isImporting.value = false
   }
 }
 
-async function handleExportData() {
-  if (isExporting.value) return
+async function handleConfirmExport() {
+  if (isExporting.value || !canConfirmExport.value) return
 
   isExporting.value = true
 
@@ -197,7 +214,12 @@ async function handleExportData() {
     const data = await getShelfData()
     const exportedAt = Date.now()
     const appVersion = browser.runtime.getManifest().version || '0.0.0'
-    const exportData = buildExportData(data, exportedAt, appVersion)
+    const exportData = buildExportDataByCategoryIds({
+      data,
+      categoryIds: exportCategoryIds.value,
+      exportedAt,
+      appVersion,
+    })
     const payload = JSON.stringify(exportData, null, 2)
     const blob = new Blob([payload], { type: 'application/json;charset=utf-8' })
     const objectUrl = URL.createObjectURL(blob)
@@ -208,11 +230,24 @@ async function handleExportData() {
     anchor.click()
 
     URL.revokeObjectURL(objectUrl)
-    showSuccessMessage('数据已导出')
+    showSuccessMessage('按分类导出成功')
+    resetExportState()
   } finally {
     isExporting.value = false
   }
 }
+
+onMounted(() => {
+  syncAnimatedTotals()
+})
+
+watch([totalCategories, totalBookmarks], () => {
+  syncAnimatedTotals()
+})
+
+onBeforeUnmount(() => {
+  if (animationFrameId !== null) cancelAnimationFrame(animationFrameId)
+})
 </script>
 
 <template>
@@ -238,13 +273,13 @@ async function handleExportData() {
             </div>
           </template>
           <div class="my-4 flex flex-wrap gap-4">
-            <n-button secondary :loading="isImporting" @click="handleImportData">
+            <n-button secondary :loading="isImporting" @click="openImportPicker">
               <template #icon>
                 <div class="i-lucide-file-up h-[16px] w-[16px] text-[16px]" />
               </template>
               导入数据
             </n-button>
-            <n-button secondary :loading="isExporting" @click="handleExportData">
+            <n-button secondary :loading="isExporting" @click="openExportConfirm">
               <template #icon>
                 <div class="i-lucide-file-down h-[16px] w-[16px] text-[16px]" />
               </template>
@@ -272,6 +307,20 @@ async function handleExportData() {
               text
               @click="
                 openExternalLink(
+                  'https://chromewebstore.google.com/detail/doshelf/cimpakecpbafknbammmnpiifekgjmbkl',
+                )
+              "
+            >
+              <template #icon>
+                <div class="i-logos-chrome h-[16px] w-[16px] text-[16px]" />
+              </template>
+              Chrome 商店
+            </n-button>
+            <n-button
+              secondary
+              text
+              @click="
+                openExternalLink(
                   'https://microsoftedge.microsoft.com/addons/detail/doshelf/bmloldgelbkhglnaoghflbfdbojogfjg',
                 )
               "
@@ -279,7 +328,7 @@ async function handleExportData() {
               <template #icon>
                 <div class="i-logos-microsoft-edge h-[16px] w-[16px] text-[16px]" />
               </template>
-              Edge扩展商店
+              Edge 商店
             </n-button>
             <n-button
               secondary
@@ -327,21 +376,116 @@ async function handleExportData() {
   </div>
 
   <n-modal
+    v-model:show="showExportConfirm"
+    preset="card"
+    class="w-[min(560px,calc(100vw-32px))]"
+    :bordered="false"
+    title="导出数据"
+  >
+    <div
+      class="export-category-scroll mt-4 grid max-h-53 grid-cols-1 gap-2 overflow-y-auto pr-1 sm:grid-cols-2"
+    >
+      <div
+        v-for="category in exportCategoryOptions"
+        :key="`export-${category.id}`"
+        class="flex min-w-0 items-start justify-between rounded-2xl border border-white/8 bg-white/4 px-3 py-3"
+      >
+        <div class="flex min-w-0 items-center gap-2 pr-3">
+          <div class="truncate text-[14px] text-neutral-200">{{ category.name }}</div>
+          <div class="shrink-0 text-[12px] text-neutral-500">{{ category.count }} 条</div>
+        </div>
+        <n-checkbox
+          :checked="exportCategoryIds.includes(category.id)"
+          @update:checked="
+            (checked: boolean) => updateExportCategorySelection(category.id, checked)
+          "
+        />
+      </div>
+    </div>
+
+    <div class="mt-4 text-[13px] leading-6 text-neutral-500">
+      已选择：{{ selectedExportCategoryLabels.join('、') || '未选择' }}
+    </div>
+
+    <div class="mt-5 flex justify-end gap-3">
+      <n-button :disabled="isExporting" @click="resetExportState">取消</n-button>
+      <n-button
+        type="primary"
+        :loading="isExporting"
+        :disabled="!canConfirmExport"
+        @click="handleConfirmExport"
+      >
+        确认导出
+      </n-button>
+    </div>
+  </n-modal>
+
+  <n-modal
     v-model:show="showImportConfirm"
     preset="card"
-    class="w-[min(460px,calc(100vw-32px))]"
+    class="w-[min(600px,calc(100vw-32px))]"
     :bordered="false"
     title="导入数据"
   >
-    <div class="text-[14px] leading-6 text-neutral-300">
-      当前阶段只支持全量覆盖导入，会清空现有数据，请谨慎操作
+    <div class="mt-3 text-[13px] leading-6 text-neutral-500">文件：{{ pendingImportFilename }}</div>
+
+    <div
+      class="export-category-scroll mt-4 grid max-h-53 grid-cols-1 gap-2 overflow-y-auto pr-1 sm:grid-cols-2"
+    >
+      <div
+        v-for="category in importCategoryOptions"
+        :key="`import-${category.id}`"
+        class="flex min-w-0 items-start justify-between rounded-2xl border border-white/8 bg-white/4 px-3 py-3"
+      >
+        <div class="flex min-w-0 items-center gap-2 pr-3">
+          <div class="truncate text-[14px] text-neutral-200">{{ category.name }}</div>
+          <div class="shrink-0 text-[12px] text-neutral-500">{{ category.count }} 条</div>
+        </div>
+        <n-checkbox
+          :checked="importCategoryIds.includes(category.id)"
+          @update:checked="
+            (checked: boolean) => updateImportCategorySelection(category.id, checked)
+          "
+        />
+      </div>
     </div>
 
-    <div class="mt-3 text-[13px] leading-6 text-neutral-500">文件：{{ pendingImportFilename }}</div>
+    <div class="mt-4">
+      <div class="mb-2 text-[13px] font-700 text-neutral-200">导入策略</div>
+      <n-radio-group v-model:value="importStrategy" name="import-strategy">
+        <div class="flex gap-2">
+          <label
+            class="flex cursor-pointer items-start gap-3 rounded-2xl border border-white/8 bg-white/4 px-3 py-3"
+          >
+            <n-radio value="replace" />
+            <div>
+              <div class="text-[14px] text-neutral-200">覆盖导入</div>
+              <div class="mt-1 text-[12px] leading-5 text-neutral-500">整体替换当前本地书架</div>
+            </div>
+          </label>
+          <label
+            class="flex cursor-pointer items-start gap-3 rounded-2xl border border-white/8 bg-white/4 px-3 py-3"
+          >
+            <n-radio value="merge" />
+            <div>
+              <div class="text-[14px] text-neutral-200">合并导入</div>
+              <div class="mt-1 text-[12px] leading-5 text-neutral-500">
+                保留当前，合并导入内容。
+              </div>
+            </div>
+          </label>
+        </div>
+      </n-radio-group>
+    </div>
 
     <div class="mt-5 flex justify-end gap-3">
       <n-button :disabled="isImporting" @click="resetImportState">取消</n-button>
-      <n-button type="primary" :loading="isImporting" @click="handleConfirmImport">
+      <n-button
+        type="primary"
+        :loading="isImporting"
+        :disabled="!canConfirmImport"
+        @click="handleConfirmImport"
+      >
         确认导入
       </n-button>
     </div>
@@ -380,3 +524,23 @@ async function handleExportData() {
     </div>
   </n-modal>
 </template>
+
+<style scoped>
+.export-category-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
+}
+
+.export-category-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.export-category-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.export-category-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.28);
+}
+</style>
