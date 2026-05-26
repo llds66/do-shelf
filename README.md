@@ -6,16 +6,19 @@
 
 ## 安装
 
-[Edge 扩展商店](https://microsoftedge.microsoft.com/addons/detail/doshelf/bmloldgelbkhglnaoghflbfdbojogfjg)
+[Chrome 商店](https://chromewebstore.google.com/detail/doshelf/cimpakecpbafknbammmnpiifekgjmbkl)
+
+[Edge 商店](https://microsoftedge.microsoft.com/addons/detail/doshelf/bmloldgelbkhglnaoghflbfdbojogfjg)
 
 [ZIP 安装](https://doshelf.llds.cloud/install)
 
 ## 截图
 
-![截图 1](./docs/screenshots/a1.png)
-![截图 2](./docs/screenshots/a2.png)
-![截图 3](./docs/screenshots/a3.png)
-![截图 4](./docs/screenshots/a4.png)
+![截图 4](./docs/screenshots/04.png)
+![截图 5](./docs/screenshots/05.png)
+![截图 1](./docs/screenshots/01.png)
+![截图 2](./docs/screenshots/02.png)
+![截图 3](./docs/screenshots/03.png)
 
 ## 开发
 
@@ -39,17 +42,11 @@ pnpm dev
 # 启动 Firefox 开发模式
 pnpm dev-firefox
 
-# 构建生产版本
+# 构建
 pnpm build
 
-# 构建压缩包
-pnpm pack:zip
-
-# 类型检查
-pnpm typecheck
-
-# 代码格式化
-pnpm format
+# 打包
+pnpm pack
 ```
 
 ## LINUX DO
