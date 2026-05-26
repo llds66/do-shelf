@@ -381,6 +381,28 @@ export async function addCategory(name: string) {
   return nextCategory
 }
 
+export async function renameCategory(categoryId: string, name: string) {
+  const nextName = name.trim()
+  if (!nextName) return null
+
+  const data = await getShelfData()
+  const category = data.categories.find((item) => item.id === categoryId)
+
+  if (!category || category.builtIn) return null
+
+  const exists = data.categories.some(
+    (item) => item.id !== categoryId && item.name.localeCompare(nextName, 'zh-CN') === 0,
+  )
+  if (exists) return null
+
+  category.name = nextName
+  category.updatedAt = Date.now()
+
+  await saveShelfData(data)
+
+  return category
+}
+
 export async function reorderCategories(categoryIds: string[]) {
   const data = await getShelfData()
   const uniqueCategoryIds = Array.from(new Set(categoryIds))

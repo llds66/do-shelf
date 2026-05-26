@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import browser from 'webextension-polyfill'
 import { darkTheme } from 'naive-ui'
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import BookmarksPanel from './components/BookmarksPanel.vue'
+import CategoryManagerPanel from './components/CategoryManagerPanel.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
 import { provideManagerData } from './useManagerData'
 import logoUrl from '~/assets/logo.png'
@@ -10,6 +11,7 @@ import { appThemeOverrides } from '~/theme/naive'
 
 const NAV_ITEMS = [
   { label: '收藏夹', key: 'bookmarks' },
+  { label: '分类管理', key: 'categories' },
   { label: '设置', key: 'settings' },
 ] as const
 type NavKey = (typeof NAV_ITEMS)[number]['key']
@@ -22,6 +24,29 @@ const menuOptions = NAV_ITEMS.map((item) => ({
 const appVersion = browser.runtime.getManifest().version || '0.0.0'
 
 provideManagerData()
+
+function isNavKey(value: string): value is NavKey {
+  return NAV_ITEMS.some((item) => item.key === value)
+}
+
+function syncActiveViewFromUrl() {
+  const params = new URLSearchParams(window.location.search)
+  const view = params.get('view')
+
+  if (view && isNavKey(view)) activeView.value = view
+
+  if (view) {
+    params.delete('view')
+
+    const nextSearch = params.toString()
+    const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}${window.location.hash}`
+    window.history.replaceState({}, '', nextUrl)
+  }
+}
+
+onMounted(() => {
+  syncActiveViewFromUrl()
+})
 </script>
 
 <template>
@@ -84,6 +109,10 @@ provideManagerData()
           >
             <template v-if="activeView === 'bookmarks'">
               <BookmarksPanel />
+            </template>
+
+            <template v-else-if="activeView === 'categories'">
+              <CategoryManagerPanel />
             </template>
 
             <template v-else>

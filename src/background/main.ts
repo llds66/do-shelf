@@ -2,7 +2,7 @@ import browser from 'webextension-polyfill'
 
 interface OpenManagerPageMessage {
   type: 'open-manager-page'
-  openCategoryManager?: boolean
+  view?: 'bookmarks' | 'categories' | 'settings'
 }
 
 function isOpenManagerPageMessage(message: unknown): message is OpenManagerPageMessage {
@@ -33,8 +33,8 @@ browser.action.onClicked.addListener((): void => {
 browser.runtime.onMessage.addListener((message) => {
   if (!isOpenManagerPageMessage(message)) return undefined
 
-  const managerPath = message.openCategoryManager
-    ? 'dist/manager/index.html?openCategoryManager=1'
+  const managerPath = message.view
+    ? `dist/manager/index.html?view=${encodeURIComponent(message.view)}`
     : 'dist/manager/index.html'
 
   return browser.tabs.create({

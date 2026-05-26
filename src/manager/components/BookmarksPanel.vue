@@ -1,20 +1,13 @@
 <script setup lang="ts">
 import Sortable from 'sortablejs'
 import browser from 'webextension-polyfill'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useManagerData } from '../useManagerData'
+import { ALL_CATEGORY_VIEW_ID, type BookmarkRecord } from '~/shared/bookmarks'
 import {
-  ALL_CATEGORY_VIEW_ID,
-  type BookmarkRecord,
-  type CategoryWithCount,
-} from '~/shared/bookmarks'
-import {
-  addCategory,
   deleteBookmark,
   removeBookmarkFromCategory,
-  removeCategory,
   reorderBookmarksInCategory,
-  reorderCategories,
   saveBookmarkInCategories,
 } from '~/shared/storage'
 
@@ -29,7 +22,6 @@ type BookmarkActionKey = (typeof BOOKMARK_ACTION_OPTIONS)[number]['key']
 const {
   categories,
   categoriesWithCounts,
-  isDefaultCategory,
   refreshData,
   shelfData,
   selectedBookmarks,
@@ -42,25 +34,15 @@ const {
 
 const removingBookmarkId = ref('')
 const removingFromCategoryBookmarkId = ref('')
-const showCategoryManager = ref(false)
 const showEditCategoriesModal = ref(false)
 const showBookmarkSearch = ref(false)
-const newCategory = ref('')
 const bookmarkSearchKeyword = ref('')
 const editingBookmarkId = ref('')
 const editingCategoryIds = ref<string[]>([])
 const bookmarkListRef = ref<HTMLElement | null>(null)
 const bookmarkListItems = ref<BookmarkRecord[]>([])
-const categoryManagerListRef = ref<HTMLElement | null>(null)
-const managerCategoryItems = ref<CategoryWithCount[]>([])
-const isAddingCategory = ref(false)
 const isReorderingBookmarks = ref(false)
-const isReorderingCategories = ref(false)
 const isSavingCategoryEdit = ref(false)
-const deletingCategoryId = ref('')
-const managerCategories = computed(() =>
-  categoriesWithCounts.value.filter((category) => category.id !== ALL_CATEGORY_VIEW_ID),
-)
 const categoryNamesById = computed(
   () => new Map(categories.value.map((category) => [category.id, category.name] as const)),
 )
@@ -95,7 +77,6 @@ const editingBookmark = computed(() =>
 )
 const displayCategories = computed(() => categories.value)
 let bookmarkListSortable: Sortable | null = null
-let categoryManagerSortable: Sortable | null = null
 
 async function openBookmark(url: string) {
   await browser.tabs.create({ url })
@@ -160,10 +141,6 @@ async function handleBookmarkAction(action: string, bookmark: BookmarkRecord) {
   }
 
   if (action === 'copy') await copyBookmarkUrl(bookmark.url)
-}
-
-function openCategoryManager() {
-  showCategoryManager.value = true
 }
 
 function toggleBookmarkSearch() {
@@ -233,58 +210,6 @@ function setupBookmarkListSortable() {
   })
 }
 
-function syncManagerCategoryItems() {
-  managerCategoryItems.value = [...managerCategories.value]
-}
-
-function destroyCategoryManagerSortable() {
-  categoryManagerSortable?.destroy()
-  categoryManagerSortable = null
-}
-
-async function handleCategorySortChange(oldIndex: number, newIndex: number) {
-  if (isReorderingCategories.value || oldIndex === newIndex) return
-
-  const nextItems = [...managerCategoryItems.value]
-  const [movedCategory] = nextItems.splice(oldIndex, 1)
-  if (!movedCategory) return
-
-  nextItems.splice(newIndex, 0, movedCategory)
-  managerCategoryItems.value = nextItems
-  isReorderingCategories.value = true
-
-  try {
-    await reorderCategories(nextItems.map((category) => category.id))
-    await refreshData()
-    showSuccessMessage('分类顺序已更新')
-  } catch {
-    syncManagerCategoryItems()
-    showErrorMessage('分类排序更新失败')
-  } finally {
-    isReorderingCategories.value = false
-  }
-}
-
-function setupCategoryManagerSortable() {
-  if (!categoryManagerListRef.value) return
-
-  destroyCategoryManagerSortable()
-
-  categoryManagerSortable = Sortable.create(categoryManagerListRef.value, {
-    animation: 180,
-    easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
-    handle: '.category-manager-drag-handle',
-    draggable: '.category-manager-item',
-    ghostClass: 'category-manager-sort-ghost',
-    chosenClass: 'category-manager-sort-chosen',
-    dragClass: 'category-manager-sort-drag',
-    onEnd: (event: any) => {
-      if (event.oldIndex == null || event.newIndex == null) return
-      void handleCategorySortChange(event.oldIndex, event.newIndex)
-    },
-  })
-}
-
 function getBookmarkCategoryIds(bookmarkId: string) {
   return shelfData.value.categoryBookmarks
     .filter((relation) => relation.bookmarkId === bookmarkId)
@@ -328,19 +253,7 @@ function toggleEditingCategorySelection(categoryId: string) {
   updateEditingCategorySelection(categoryId, !isEditingCategorySelected(categoryId))
 }
 
-function openCategoryManagerFromUrl() {
-  const params = new URLSearchParams(window.location.search)
-  if (params.get('openCategoryManager') !== '1') return
-
-  showCategoryManager.value = true
-  params.delete('openCategoryManager')
-
-  const nextSearch = params.toString()
-  const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}${window.location.hash}`
-  window.history.replaceState({}, '', nextUrl)
-}
-
-function getCategoryDisplayName(category: CategoryWithCount) {
+function getCategoryDisplayName(category: { name: string }) {
   return category.name
 }
 
@@ -383,48 +296,6 @@ async function handleConfirmEditCategories() {
   }
 }
 
-async function handleAddCategory() {
-  const nextCategory = newCategory.value.trim()
-  if (!nextCategory || isAddingCategory.value) return
-
-  isAddingCategory.value = true
-
-  try {
-    const category = await addCategory(nextCategory)
-    if (!category) {
-      showErrorMessage('分类已存在或名称无效')
-      return
-    }
-
-    newCategory.value = ''
-    await refreshData()
-    selectedCategoryId.value = category.id
-    showSuccessMessage('分类已添加')
-  } finally {
-    isAddingCategory.value = false
-  }
-}
-
-async function handleDeleteCategory(category: CategoryWithCount) {
-  if (deletingCategoryId.value) return
-
-  deletingCategoryId.value = category.id
-
-  try {
-    const result = await removeCategory(category.id)
-    if (!result) {
-      showErrorMessage('预设分类不能删除')
-      return
-    }
-
-    await refreshData()
-
-    showSuccessMessage(`分类已删除，移除了 ${result.removedRelationCount} 条归属`)
-  } finally {
-    deletingCategoryId.value = ''
-  }
-}
-
 watch(
   [filteredBookmarks, canDragSortBookmarks],
   async () => {
@@ -441,36 +312,8 @@ watch(
   { immediate: true },
 )
 
-watch(
-  managerCategories,
-  async () => {
-    syncManagerCategoryItems()
-
-    if (!showCategoryManager.value) return
-
-    await nextTick()
-    setupCategoryManagerSortable()
-  },
-  { immediate: true },
-)
-
-watch(showCategoryManager, async (show) => {
-  if (!show) {
-    destroyCategoryManagerSortable()
-    return
-  }
-
-  await nextTick()
-  setupCategoryManagerSortable()
-})
-
-onMounted(() => {
-  openCategoryManagerFromUrl()
-})
-
 onBeforeUnmount(() => {
   destroyBookmarkListSortable()
-  destroyCategoryManagerSortable()
 })
 </script>
 
@@ -495,13 +338,6 @@ onBeforeUnmount(() => {
           </n-tab-pane>
         </n-tabs>
       </div>
-
-      <n-button secondary class="shrink-0" @click="openCategoryManager">
-        <template #icon>
-          <div class="i-lucide-settings-2 h-[16px] w-[16px] text-[16px]" />
-        </template>
-        分类管理
-      </n-button>
 
       <n-button secondary class="shrink-0" @click="toggleBookmarkSearch">
         <template #icon>
@@ -658,86 +494,6 @@ onBeforeUnmount(() => {
   </n-scrollbar>
 
   <n-modal
-    v-model:show="showCategoryManager"
-    preset="card"
-    class="category-manager-modal h-[560px] w-[min(680px,calc(100vw-32px))]"
-    :bordered="false"
-    title="分类管理"
-    segmented
-  >
-    <div class="flex flex-col gap-5">
-      <div class="flex gap-2">
-        <n-input
-          v-model:value="newCategory"
-          maxlength="24"
-          placeholder="新分类名称"
-          @keydown.enter.prevent="handleAddCategory"
-        />
-        <n-button type="primary" round :loading="isAddingCategory" @click="handleAddCategory">
-          新增
-        </n-button>
-      </div>
-
-      <div class="flex items-center gap-2 text-[12px] text-neutral-400">
-        <div class="i-lucide-grip h-[14px] w-[14px] text-[14px]" />
-        <span>拖动左侧手柄调整分类顺序</span>
-      </div>
-
-      <div class="category-manager-scroll h-[370px] overflow-y-auto pr-1">
-        <div ref="categoryManagerListRef" class="flex flex-col gap-1.5">
-          <div
-            v-for="category in managerCategoryItems"
-            :key="category.id"
-            class="category-manager-item flex items-center justify-between gap-2 rounded-xl border border-white/8 bg-white/4 px-3 py-2.5 transition-colors"
-          >
-            <div class="min-w-0 flex items-center gap-2.5">
-              <button
-                type="button"
-                class="category-manager-drag-handle inline-flex h-8 w-8 shrink-0 cursor-grab items-center justify-center rounded-full border border-white/8 bg-white/3 text-neutral-400 transition hover:border-white/14 hover:text-neutral-200 active:cursor-grabbing"
-                :disabled="isReorderingCategories"
-                aria-label="拖动排序"
-                title="拖动排序"
-              >
-                <div class="i-lucide-grip h-[16px] w-[16px] text-[16px]" />
-              </button>
-
-              <div class="truncate text-[14px] font-700 text-white">
-                {{ getCategoryDisplayName(category) }}
-              </div>
-              <div class="shrink-0 text-[12px] text-neutral-400">{{ category.count }} 条</div>
-            </div>
-
-            <div class="flex shrink-0 items-center gap-1.5">
-              <n-tag v-if="isDefaultCategory(category.id)" size="small" round :bordered="false">
-                预设
-              </n-tag>
-              <n-popconfirm
-                v-else
-                positive-text="确认"
-                negative-text="取消"
-                @positive-click="handleDeleteCategory(category)"
-              >
-                <template #trigger>
-                  <n-button
-                    text
-                    type="error"
-                    size="small"
-                    :disabled="isReorderingCategories"
-                    :loading="deletingCategoryId === category.id"
-                  >
-                    删除
-                  </n-button>
-                </template>
-                删除分类“{{ category.name }}”？若相关收藏不再属于其他分类，它们会被一并删除。
-              </n-popconfirm>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </n-modal>
-
-  <n-modal
     :show="showEditCategoriesModal"
     preset="card"
     class="edit-categories-modal w-[min(520px,calc(100vw-32px))]"
@@ -792,14 +548,6 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.category-manager-modal :deep(.n-card) {
-  height: 100%;
-}
-
-.category-manager-modal :deep(.n-card__content) {
-  height: 100%;
-}
-
 .bookmarks-tabs :deep(.v-x-scroll) {
   padding-bottom: 2px;
   scrollbar-width: thin;
@@ -816,24 +564,6 @@ onBeforeUnmount(() => {
 }
 
 .bookmarks-tabs :deep(.v-x-scroll::-webkit-scrollbar-thumb) {
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.28);
-}
-
-.category-manager-scroll {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
-}
-
-.category-manager-scroll::-webkit-scrollbar {
-  width: 6px;
-}
-
-.category-manager-scroll::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.category-manager-scroll::-webkit-scrollbar-thumb {
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.28);
 }
@@ -855,26 +585,6 @@ onBeforeUnmount(() => {
 }
 
 .bookmark-list-item.bookmark-sort-drag {
-  opacity: 0.98;
-}
-
-.category-manager-item {
-  will-change: transform;
-}
-
-.category-manager-item.category-manager-sort-ghost {
-  border-color: rgba(255, 255, 255, 0.18);
-  background: rgba(255, 255, 255, 0.08);
-  opacity: 0.72;
-}
-
-.category-manager-item.category-manager-sort-chosen {
-  border-color: rgba(255, 255, 255, 0.22);
-  background: rgba(255, 255, 255, 0.08);
-  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.18);
-}
-
-.category-manager-item.category-manager-sort-drag {
   opacity: 0.98;
 }
 

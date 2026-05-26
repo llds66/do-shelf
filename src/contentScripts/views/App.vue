@@ -162,9 +162,9 @@ function toggleCategorySelection(categoryId: string) {
   updateCategorySelection(categoryId, !isCategorySelected(categoryId))
 }
 
-async function openManagerPage(openCategoryManager = false) {
+async function openManagerPage(view: 'bookmarks' | 'categories' = 'bookmarks') {
   try {
-    await browser.runtime.sendMessage({ type: 'open-manager-page', openCategoryManager })
+    await browser.runtime.sendMessage({ type: 'open-manager-page', view })
     closePanel()
   } catch {
     showSuccessMessage('打开分类管理失败')
@@ -384,7 +384,7 @@ onBeforeUnmount(() => {
               type="button"
               class="category-manager-link"
               :disabled="isSaving"
-              @click="openManagerPage(true)"
+              @click="openManagerPage('categories')"
             >
               分类管理
             </button>
@@ -392,7 +392,7 @@ onBeforeUnmount(() => {
               type="button"
               class="category-manager-link"
               :disabled="isSaving"
-              @click="openManagerPage()"
+              @click="openManagerPage('bookmarks')"
             >
               查看全部
             </button>
