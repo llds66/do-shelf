@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import browser from 'webextension-polyfill'
-import { darkTheme } from 'naive-ui'
-import { onMounted, ref } from 'vue'
+import { darkTheme, type MenuOption } from 'naive-ui'
+import { h, onMounted, ref } from 'vue'
 import BookmarksPanel from './components/BookmarksPanel.vue'
 import CategoryManagerPanel from './components/CategoryManagerPanel.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
@@ -10,16 +10,17 @@ import logoUrl from '~/assets/logo.png'
 import { appThemeOverrides } from '~/theme/naive'
 
 const NAV_ITEMS = [
-  { label: '收藏夹', key: 'bookmarks' },
-  { label: '分类管理', key: 'categories' },
-  { label: '设置', key: 'settings' },
+  { label: '收藏夹', key: 'bookmarks', icon: 'i-lucide-bookmark' },
+  { label: '分类管理', key: 'categories', icon: 'i-lucide-layout-list' },
+  { label: '设置', key: 'settings', icon: 'i-lucide-settings-2' },
 ] as const
 type NavKey = (typeof NAV_ITEMS)[number]['key']
 
 const activeView = ref<NavKey>('bookmarks')
-const menuOptions = NAV_ITEMS.map((item) => ({
+const menuOptions = NAV_ITEMS.map<MenuOption>((item) => ({
   label: item.label,
   key: item.key,
+  icon: () => h('div', { class: `${item.icon} h-[16px] w-[16px] text-[16px]` }),
 }))
 const appVersion = browser.runtime.getManifest().version || '0.0.0'
 
@@ -56,7 +57,7 @@ onMounted(() => {
     >
       <div class="mx-auto flex h-full max-w-[1360px] flex-col px-5 lg:px-8">
         <div
-          class="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] gap-5 lg:grid-cols-[280px_minmax(0,1fr)] lg:grid-rows-1"
+          class="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] gap-5 lg:grid-cols-[200px_minmax(0,1fr)] lg:grid-rows-1"
         >
           <section
             class="flex min-h-0 flex-col overflow-hidden rounded-3xl border border-white/8 bg-white/5 backdrop-blur-xl"

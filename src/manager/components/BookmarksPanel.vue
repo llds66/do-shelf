@@ -2,6 +2,7 @@
 import Sortable from 'sortablejs'
 import browser from 'webextension-polyfill'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import type { MenuOption } from 'naive-ui'
 import { useManagerData } from '../useManagerData'
 import { ALL_CATEGORY_VIEW_ID, type BookmarkRecord } from '~/shared/bookmarks'
 import {
@@ -29,13 +30,11 @@ const {
   selectedCategoryId,
   showErrorMessage,
   showSuccessMessage,
-  tabsRenderKey,
 } = useManagerData()
 
 const removingBookmarkId = ref('')
 const removingFromCategoryBookmarkId = ref('')
 const showEditCategoriesModal = ref(false)
-const showBookmarkSearch = ref(false)
 const bookmarkSearchKeyword = ref('')
 const editingBookmarkId = ref('')
 const editingCategoryIds = ref<string[]>([])
@@ -45,6 +44,13 @@ const isReorderingBookmarks = ref(false)
 const isSavingCategoryEdit = ref(false)
 const categoryNamesById = computed(
   () => new Map(categories.value.map((category) => [category.id, category.name] as const)),
+)
+const categoryMenuOptions = computed<MenuOption[]>(() =>
+  categoriesWithCounts.value.map((category) => ({
+    key: category.id,
+    label: category.name,
+    extra: `${category.count}`,
+  })),
 )
 const isAllCategoryViewSelected = computed(() => selectedCategoryId.value === ALL_CATEGORY_VIEW_ID)
 const normalizedBookmarkSearchKeyword = computed(() =>
@@ -141,12 +147,6 @@ async function handleBookmarkAction(action: string, bookmark: BookmarkRecord) {
   }
 
   if (action === 'copy') await copyBookmarkUrl(bookmark.url)
-}
-
-function toggleBookmarkSearch() {
-  showBookmarkSearch.value = !showBookmarkSearch.value
-
-  if (!showBookmarkSearch.value) bookmarkSearchKeyword.value = ''
 }
 
 function syncBookmarkListItems() {
@@ -318,12 +318,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="pt-3">
-    <div class="bookmarks-tabs flex items-center gap-3">
-      <div
-        class="min-w-0 flex-1 rounded-3xl border border-white/8 bg-white/2 backdrop-blur-xl px-4 py-1"
-      >
-        <n-tabs :key="tabsRenderKey" v-model:value="selectedCategoryId" type="line" animated>
+  <div class="min-h-0 flex flex-1 flex-col py-5 lg:flex-row lg:gap-5">
+    <div class="mb-4 lg:hidden">
+      <div class="rounded-3xl border border-white/8 bg-white/2 px-4 py-1">
+        <n-tabs v-model:value="selectedCategoryId" type="line" animated class="bookmarks-tabs">
           <n-tab-pane
             v-for="category in categoriesWithCounts"
             :key="category.id"
@@ -332,166 +330,176 @@ onBeforeUnmount(() => {
             <template #tab>
               <div class="flex items-baseline gap-1">
                 <span>{{ getCategoryDisplayName(category) }}</span>
-                <span class="text-[11px] text-neutral-500"> ({{ category.count }}) </span>
+                <span class="text-[11px] text-neutral-500">({{ category.count }})</span>
               </div>
             </template>
           </n-tab-pane>
         </n-tabs>
       </div>
-
-      <n-button secondary class="shrink-0" @click="toggleBookmarkSearch">
-        <template #icon>
-          <div class="i-lucide-search h-[16px] w-[16px] text-[16px]" />
-        </template>
-        {{ showBookmarkSearch ? '关闭搜索' : '搜索' }}
-      </n-button>
     </div>
 
-    <div v-if="showBookmarkSearch" class="mt-4">
+    <aside class="hidden min-h-0 flex-col lg:flex lg:w-[160px] lg:shrink-0">
+      <div class="flex min-h-0 flex-1 flex-col p-3">
+        <div class="bookmarks-category-scroll min-h-0 flex-1 overflow-y-auto pr-1">
+          <n-menu
+            v-model:value="selectedCategoryId"
+            :options="categoryMenuOptions"
+            :indent="18"
+            :icon-size="18"
+            class="bookmarks-category-menu"
+          />
+        </div>
+      </div>
+    </aside>
+
+    <section class="min-h-0 flex flex-1 flex-col">
       <n-input
         v-model:value="bookmarkSearchKeyword"
         clearable
         size="large"
         round
         :placeholder="bookmarkSearchPlaceholder"
+        class="shrink-0"
       >
         <template #prefix>
           <div class="i-lucide-search h-[16px] w-[16px] text-[16px] text-neutral-500" />
         </template>
       </n-input>
-    </div>
-  </div>
 
-  <n-scrollbar class="min-h-0 flex-1 py-5">
-    <section v-if="bookmarkListItems.length" class="flex flex-col gap-3">
-      <div ref="bookmarkListRef" class="flex flex-col gap-3">
-        <n-card
-          v-for="bookmark in bookmarkListItems"
-          :key="bookmark.id"
-          class="bookmark-list-item"
-          :bordered="false"
-          content-class="!p-0"
-        >
-          <div class="flex items-center gap-3 px-4 py-3">
-            <button
-              v-if="!isAllCategoryViewSelected"
-              type="button"
-              class="bookmark-drag-handle inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/8 bg-white/3 text-neutral-400 transition hover:border-white/14 hover:text-neutral-200"
-              :class="
-                canDragSortBookmarks
-                  ? 'cursor-grab active:cursor-grabbing'
-                  : 'cursor-not-allowed opacity-60'
-              "
-              :disabled="!canDragSortBookmarks || isReorderingBookmarks"
-              :aria-label="hasBookmarkSearchKeyword ? '搜索结果中暂不支持排序' : '拖动排序'"
-              :title="hasBookmarkSearchKeyword ? '搜索结果中暂不支持排序' : '拖动排序'"
+      <n-scrollbar class="min-h-0 flex-1 py-5">
+        <section v-if="bookmarkListItems.length" class="flex flex-col gap-3">
+          <div ref="bookmarkListRef" class="flex flex-col gap-3">
+            <n-card
+              v-for="bookmark in bookmarkListItems"
+              :key="bookmark.id"
+              class="bookmark-list-item"
+              :bordered="false"
+              content-class="!p-0"
             >
-              <div class="i-lucide-grip h-[16px] w-[16px] text-[16px]" />
-            </button>
-
-            <img
-              v-if="bookmark.faviconUrl"
-              :src="bookmark.faviconUrl"
-              alt=""
-              class="h-5 w-5 shrink-0 rounded-sm"
-            />
-
-            <div class="min-w-0 flex-1">
-              <div class="flex flex-wrap items-center gap-2">
-                <n-button
-                  text
-                  class="min-w-0 flex-1 justify-start !px-0 text-left !text-[15px] !font-700 !text-neutral-300 hover:text-neutral-100!"
-                  @click="openBookmark(bookmark.url)"
+              <div class="flex items-center gap-3 px-4 py-3">
+                <button
+                  v-if="!isAllCategoryViewSelected"
+                  type="button"
+                  class="bookmark-drag-handle inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/8 bg-white/3 text-neutral-400 transition hover:border-white/14 hover:text-neutral-200"
+                  :class="
+                    canDragSortBookmarks
+                      ? 'cursor-grab active:cursor-grabbing'
+                      : 'cursor-not-allowed opacity-60'
+                  "
+                  :disabled="!canDragSortBookmarks || isReorderingBookmarks"
+                  :aria-label="hasBookmarkSearchKeyword ? '搜索结果中暂不支持排序' : '拖动排序'"
+                  :title="hasBookmarkSearchKeyword ? '搜索结果中暂不支持排序' : '拖动排序'"
                 >
-                  <n-ellipsis>
-                    {{ bookmark.title }}
-                  </n-ellipsis>
-                </n-button>
+                  <div class="i-lucide-grip h-[16px] w-[16px] text-[16px]" />
+                </button>
 
-                <div
-                  v-if="getBookmarkCategoryNames(bookmark.id).length"
-                  class="flex flex-wrap gap-1.5"
-                >
-                  <n-tag
-                    v-for="categoryName in getBookmarkCategoryNames(bookmark.id)"
-                    :key="`${bookmark.id}-${categoryName}`"
-                    size="small"
-                    round
-                    :bordered="false"
-                    class="bg-white/8!"
+                <img
+                  v-if="bookmark.faviconUrl"
+                  :src="bookmark.faviconUrl"
+                  alt=""
+                  class="h-5 w-5 shrink-0 rounded-sm"
+                />
+
+                <div class="min-w-0 flex-1">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <n-button
+                      text
+                      class="min-w-0 flex-1 justify-start !px-0 text-left !text-[15px] !font-700 !text-neutral-300 hover:text-neutral-100!"
+                      @click="openBookmark(bookmark.url)"
+                    >
+                      <n-ellipsis>
+                        {{ bookmark.title }}
+                      </n-ellipsis>
+                    </n-button>
+
+                    <div
+                      v-if="getBookmarkCategoryNames(bookmark.id).length"
+                      class="flex flex-wrap gap-1.5"
+                    >
+                      <n-tag
+                        v-for="categoryName in getBookmarkCategoryNames(bookmark.id)"
+                        :key="`${bookmark.id}-${categoryName}`"
+                        size="small"
+                        round
+                        :bordered="false"
+                        class="bg-white/8!"
+                      >
+                        {{ categoryName }}
+                      </n-tag>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="flex shrink-0 items-center gap-2">
+                  <n-dropdown
+                    trigger="click"
+                    :options="BOOKMARK_ACTION_OPTIONS"
+                    @select="
+                      (key: string) => handleBookmarkAction(key as BookmarkActionKey, bookmark)
+                    "
                   >
-                    {{ categoryName }}
-                  </n-tag>
+                    <n-button
+                      text
+                      quaternary
+                      circle
+                      class="!h-8 !w-8 !text-neutral-300 hover:!text-white"
+                    >
+                      <div class="i-lucide-ellipsis h-[18px] w-[18px] text-[18px]" />
+                    </n-button>
+                  </n-dropdown>
+
+                  <n-popconfirm
+                    v-if="!isAllCategoryViewSelected"
+                    positive-text="确认"
+                    :negative-text="null"
+                    @positive-click="handleRemoveBookmarkFromCurrentCategory(bookmark.id)"
+                  >
+                    <template #trigger>
+                      <n-button
+                        text
+                        quaternary
+                        circle
+                        class="!h-8 !w-8 !text-neutral-300 hover:!text-white"
+                        :loading="removingFromCategoryBookmarkId === bookmark.id"
+                      >
+                        <div class="i-lucide-trash-2 h-[18px] w-[18px] text-[18px]" />
+                      </n-button>
+                    </template>
+                    该标签将从此分类移除
+                  </n-popconfirm>
+
+                  <n-popconfirm
+                    v-else
+                    positive-text="确认"
+                    :negative-text="null"
+                    @positive-click="handleDeleteBookmark(bookmark.id)"
+                  >
+                    <template #trigger>
+                      <n-button
+                        text
+                        type="error"
+                        quaternary
+                        circle
+                        class="!h-8 !w-8 !text-neutral-300 hover:!text-white"
+                        :loading="removingBookmarkId === bookmark.id"
+                      >
+                        <div class="i-lucide-trash-2 h-[18px] w-[18px] text-[18px]" />
+                      </n-button>
+                    </template>
+                    该收藏将从所有分类移除
+                  </n-popconfirm>
                 </div>
               </div>
-            </div>
-
-            <div class="flex shrink-0 items-center gap-2">
-              <n-dropdown
-                trigger="click"
-                :options="BOOKMARK_ACTION_OPTIONS"
-                @select="(key: string) => handleBookmarkAction(key as BookmarkActionKey, bookmark)"
-              >
-                <n-button
-                  text
-                  quaternary
-                  circle
-                  class="!h-8 !w-8 !text-neutral-300 hover:!text-white"
-                >
-                  <div class="i-lucide-ellipsis h-[18px] w-[18px] text-[18px]" />
-                </n-button>
-              </n-dropdown>
-
-              <n-popconfirm
-                v-if="!isAllCategoryViewSelected"
-                positive-text="确认"
-                :negative-text="null"
-                @positive-click="handleRemoveBookmarkFromCurrentCategory(bookmark.id)"
-              >
-                <template #trigger>
-                  <n-button
-                    text
-                    quaternary
-                    circle
-                    class="!h-8 !w-8 !text-neutral-300 hover:!text-white"
-                    :loading="removingFromCategoryBookmarkId === bookmark.id"
-                  >
-                    <div class="i-lucide-trash-2 h-[18px] w-[18px] text-[18px]" />
-                  </n-button>
-                </template>
-                该标签将从此分类移除
-              </n-popconfirm>
-
-              <n-popconfirm
-                v-else
-                positive-text="确认"
-                :negative-text="null"
-                @positive-click="handleDeleteBookmark(bookmark.id)"
-              >
-                <template #trigger>
-                  <n-button
-                    text
-                    type="error"
-                    quaternary
-                    circle
-                    class="!h-8 !w-8 !text-neutral-300 hover:!text-white"
-                    :loading="removingBookmarkId === bookmark.id"
-                  >
-                    <div class="i-lucide-trash-2 h-[18px] w-[18px] text-[18px]" />
-                  </n-button>
-                </template>
-                该收藏将从所有分类移除
-              </n-popconfirm>
-            </div>
+            </n-card>
           </div>
-        </n-card>
-      </div>
-    </section>
+        </section>
 
-    <section v-else class="flex min-h-full items-center justify-center py-10">
-      <n-empty :description="emptyDescription" />
+        <section v-else class="flex min-h-full items-center justify-center py-10">
+          <n-empty :description="emptyDescription" />
+        </section>
+      </n-scrollbar>
     </section>
-  </n-scrollbar>
+  </div>
 
   <n-modal
     :show="showEditCategoriesModal"
@@ -566,6 +574,37 @@ onBeforeUnmount(() => {
 .bookmarks-tabs :deep(.v-x-scroll::-webkit-scrollbar-thumb) {
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.28);
+}
+
+.bookmarks-category-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
+}
+
+.bookmarks-category-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.bookmarks-category-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.bookmarks-category-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.bookmarks-category-menu :deep(.n-menu-item-content) {
+  border-radius: 16px;
+}
+
+.bookmarks-category-menu :deep(.n-menu-item-content-header) {
+  min-width: 0;
+}
+
+.bookmarks-category-menu :deep(.n-menu-item-content__extra) {
+  color: rgba(115, 115, 115, 1);
+  font-size: 12px;
 }
 
 .bookmark-list-item {
