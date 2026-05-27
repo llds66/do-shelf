@@ -1,0 +1,75 @@
+name: Release Extension
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.7.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Sync version from tag
+        shell: bash
+        run: |
+          TAG_NAME="${GITHUB_REF_NAME}"
+          VERSION="${TAG_NAME#v}"
+          npm version "${VERSION}" --no-git-tag-version
+
+      - name: Build extension
+        run: pnpm run build
+
+      - name: Pack extension zip
+        run: pnpm run pack:zip
+
+      - name: Generate release notes
+        id: notes
+        shell: bash
+        run: |
+          CURRENT_TAG="${GITHUB_REF_NAME}"
+          PREVIOUS_TAG="$(git tag --sort=-version:refname | grep '^v' | grep -Fxv "$CURRENT_TAG" | head -n 1)"
+          {
+            echo "新增功能："
+            if [ -n "$PREVIOUS_TAG" ]; then
+              FEATURES="$(git log "${PREVIOUS_TAG}..${CURRENT_TAG}" --pretty=format:'%s' | grep '^feat:' || true)"
+            else
+              FEATURES="$(git log "${CURRENT_TAG}" --pretty=format:'%s' | grep '^feat:' || true)"
+            fi
+
+            if [ -n "$FEATURES" ]; then
+              echo "$FEATURES" | sed 's/^feat: */- /'
+            else
+              echo "- 本次发布没有匹配到 feat: 提交，请手动补充说明。"
+            fi
+          } > release-notes.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          body_path: release-notes.md
+          files: extension.zip
