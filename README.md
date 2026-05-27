@@ -14,11 +14,13 @@
 
 ## 截图
 
-![截图 4](./docs/screenshots/04.png)
-![截图 5](./docs/screenshots/05.png)
-![截图 1](./docs/screenshots/01.png)
-![截图 2](./docs/screenshots/02.png)
-![截图 3](./docs/screenshots/03.png)
+![截图 1](./docs/screenshots/b1.png)
+
+![截图 2](./docs/screenshots/b2.png)
+
+![截图 3](./docs/screenshots/b3.png)
+
+![截图 4](./docs/screenshots/b4.png)
 
 ## 开发
 
