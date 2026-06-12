@@ -13,6 +13,12 @@ import {
   type ImportStrategy,
 } from '~/shared/import-export'
 import type { DoShelfData } from '~/shared/bookmarks'
+import {
+  EXTENSION_SETTINGS_KEY,
+  getExtensionSettings,
+  normalizeExtensionSettings,
+  saveExtensionSettings,
+} from '~/shared/settings'
 import { clearShelfData, getShelfData, saveShelfData } from '~/shared/storage'
 
 const {
@@ -28,6 +34,8 @@ const clearConfirmText = ref('')
 const isImporting = ref(false)
 const isExporting = ref(false)
 const isClearing = ref(false)
+const isSavingSettings = ref(false)
+const extensionSettings = ref(normalizeExtensionSettings(undefined))
 const animatedTotalCategories = ref(0)
 const animatedTotalBookmarks = ref(0)
 const showImportConfirm = ref(false)
@@ -39,6 +47,7 @@ const exportCategoryIds = ref<string[]>([])
 const importCategoryIds = ref<string[]>([])
 const importStrategy = ref<ImportStrategy>('replace')
 const canConfirmClear = computed(() => clearConfirmText.value === 'do-shelf')
+const conciseMode = computed(() => extensionSettings.value.conciseMode)
 const exportCategoryOptions = computed(() => buildCategorySelectionOptions(shelfData.value))
 const importCategoryOptions = computed<CategorySelectionOption[]>(() =>
   pendingImportData.value ? buildCategorySelectionOptions(pendingImportData.value) : [],
@@ -142,6 +151,33 @@ async function openExternalLink(url: string) {
   await browser.tabs.create({ url })
 }
 
+async function updateConciseMode(value: boolean) {
+  if (isSavingSettings.value) return
+
+  isSavingSettings.value = true
+
+  try {
+    extensionSettings.value = await saveExtensionSettings({
+      ...extensionSettings.value,
+      conciseMode: value,
+    })
+    showSuccessMessage(value ? '已开启简洁模式' : '已关闭简洁模式')
+  } catch {
+    showErrorMessage('设置保存失败')
+  } finally {
+    isSavingSettings.value = false
+  }
+}
+
+function handleSettingsStorageChange(
+  changes: Record<string, browser.Storage.StorageChange>,
+  areaName: string,
+) {
+  if (areaName !== 'local' || !changes[EXTENSION_SETTINGS_KEY]) return
+
+  extensionSettings.value = normalizeExtensionSettings(changes[EXTENSION_SETTINGS_KEY].newValue)
+}
+
 async function handleImportFileChange(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
@@ -237,8 +273,10 @@ async function handleConfirmExport() {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   syncAnimatedTotals()
+  extensionSettings.value = await getExtensionSettings()
+  browser.storage.onChanged.addListener(handleSettingsStorageChange)
 })
 
 watch([totalCategories, totalBookmarks], () => {
@@ -247,6 +285,7 @@ watch([totalCategories, totalBookmarks], () => {
 
 onBeforeUnmount(() => {
   if (animationFrameId !== null) cancelAnimationFrame(animationFrameId)
+  browser.storage.onChanged.removeListener(handleSettingsStorageChange)
 })
 </script>
 
@@ -291,6 +330,23 @@ onBeforeUnmount(() => {
               </template>
               清空全部数据
             </n-button>
+          </div>
+        </n-card>
+
+        <n-card :bordered="false" title="页面增强">
+          <div class="my-4 grid gap-3">
+            <div
+              class="flex items-center justify-between gap-4 rounded-2xl border border-white/8 bg-white/4 px-4 py-3"
+            >
+              <div class="min-w-0">
+                <div class="text-[14px] font-700 text-neutral-200">简洁模式</div>
+              </div>
+              <n-switch
+                :value="conciseMode"
+                :loading="isSavingSettings"
+                @update:value="updateConciseMode"
+              />
+            </div>
           </div>
         </n-card>
 

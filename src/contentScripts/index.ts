@@ -3,10 +3,17 @@ import browser from 'webextension-polyfill'
 import 'uno.css'
 import App from './views/App.vue'
 import { setupApp } from '~/logic/common-setup'
+import {
+  EXTENSION_SETTINGS_KEY,
+  getExtensionSettings,
+  normalizeExtensionSettings,
+} from '~/shared/settings'
+import { CONCISE_MODE_CLASS, pageEnhancementStyleText } from './pageEnhancementStyles'
 
 const ROOT_ID = 'do-shelf-root'
 const OVERLAY_ROOT_ID = 'do-shelf-overlay-root'
 const STYLE_ID = 'do-shelf-content-style'
+const ENHANCEMENT_STYLE_ID = 'do-shelf-enhancement-style'
 type StyleMountTarget = HTMLElement
 
 let app: VueApp<Element> | null = null
@@ -16,6 +23,10 @@ let lastUrl = location.href
 
 function isLinuxDoTopicPage() {
   return location.hostname === 'linux.do' && location.pathname.startsWith('/t/')
+}
+
+function isLinuxDoPage() {
+  return location.hostname === 'linux.do'
 }
 
 function getPageTitle() {
@@ -65,6 +76,38 @@ function ensureContentStyle() {
   document.head.appendChild(styleEl)
 }
 
+function ensureEnhancementStyle() {
+  if (document.getElementById(ENHANCEMENT_STYLE_ID)) return
+
+  const styleEl = document.createElement('style')
+  styleEl.id = ENHANCEMENT_STYLE_ID
+  styleEl.textContent = pageEnhancementStyleText
+  document.head.appendChild(styleEl)
+}
+
+function applyConciseMode(enabled: boolean) {
+  document.documentElement.classList.toggle(CONCISE_MODE_CLASS, enabled && isLinuxDoPage())
+}
+
+async function syncEnhancementSettings() {
+  const settings = await getExtensionSettings()
+
+  ensureEnhancementStyle()
+  applyConciseMode(settings.conciseMode)
+}
+
+function handleSettingsStorageChange(
+  changes: Record<string, browser.Storage.StorageChange>,
+  areaName: string,
+) {
+  if (areaName !== 'local' || !changes[EXTENSION_SETTINGS_KEY]) return
+
+  const settings = normalizeExtensionSettings(changes[EXTENSION_SETTINGS_KEY].newValue)
+
+  ensureEnhancementStyle()
+  applyConciseMode(settings.conciseMode)
+}
+
 function createButtonContainer() {
   const host = document.createElement('span')
   host.id = ROOT_ID
@@ -107,6 +150,7 @@ function createOverlayContainer() {
 
 function setupDoShelf() {
   teardownDoShelf()
+  void syncEnhancementSettings()
 
   if (!document.body || !isLinuxDoTopicPage()) return
 
@@ -178,4 +222,5 @@ if (document.readyState === 'loading')
   window.addEventListener('DOMContentLoaded', setupDoShelf, { once: true })
 else setupDoShelf()
 
+browser.storage.onChanged.addListener(handleSettingsStorageChange)
 watchUrlChange()
