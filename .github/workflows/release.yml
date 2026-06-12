@@ -32,17 +32,20 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Sync version from tag
+      - name: Verify version matches tag
         shell: bash
         run: |
           TAG_NAME="${GITHUB_REF_NAME}"
           VERSION="${TAG_NAME#v}"
           CURRENT_VERSION="$(node -p "require('./package.json').version")"
-          if [ "$CURRENT_VERSION" = "$VERSION" ]; then
-            echo "package.json version is already ${VERSION}"
-          else
-            npm version "${VERSION}" --no-git-tag-version
+
+          if [ "$CURRENT_VERSION" != "$VERSION" ]; then
+            echo "Tag version (${VERSION}) does not match package.json version (${CURRENT_VERSION})."
+            echo "Run npm version patch/minor/major before pushing the release tag."
+            exit 1
           fi
+
+          echo "package.json version matches tag: ${VERSION}"
 
       - name: Build extension
         run: pnpm run build
