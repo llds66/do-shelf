@@ -407,7 +407,7 @@ onBeforeUnmount(() => {
                       class="min-w-0 flex-1 justify-start !px-0 text-left !text-[15px] !font-700 !text-neutral-300 hover:text-neutral-100!"
                       @click="openBookmark(bookmark.url)"
                     >
-                      <n-ellipsis>
+                      <n-ellipsis style="max-width: 650px">
                         {{ bookmark.title }}
                       </n-ellipsis>
                     </n-button>
