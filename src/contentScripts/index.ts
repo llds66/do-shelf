@@ -14,6 +14,8 @@ const ROOT_ID = 'do-shelf-root'
 const OVERLAY_ROOT_ID = 'do-shelf-overlay-root'
 const STYLE_ID = 'do-shelf-content-style'
 const ENHANCEMENT_STYLE_ID = 'do-shelf-enhancement-style'
+const SIDEBAR_MANAGER_ENTRY_ID = 'do-shelf-sidebar-manager-entry'
+const SIDEBAR_MANAGER_ENTRY_NAME = 'doshelf-bookmarks'
 type StyleMountTarget = HTMLElement
 
 let app: VueApp<Element> | null = null
@@ -43,6 +45,65 @@ function getPageTitle() {
 
 function findNativeMountPoint(): HTMLElement | null {
   return document.querySelector<HTMLElement>('#topic-title .title-wrapper h1')
+}
+
+function findCommunitySidebarList(): HTMLUListElement | null {
+  return (
+    document.querySelector<HTMLUListElement>('ul#sidebar-section-content-community') ||
+    document.querySelector<HTMLUListElement>('#sidebar-section-content-community ul')
+  )
+}
+
+async function openManagerPage() {
+  try {
+    await browser.runtime.sendMessage({ type: 'open-manager-page', view: 'bookmarks' })
+  } catch {
+    window.open(
+      browser.runtime.getURL('dist/manager/index.html?view=bookmarks'),
+      '_blank',
+      'noopener',
+    )
+  }
+}
+
+function createSidebarManagerEntry() {
+  const item = document.createElement('li')
+  item.id = SIDEBAR_MANAGER_ENTRY_ID
+  item.className = 'sidebar-section-link-wrapper'
+  item.dataset.listItemName = SIDEBAR_MANAGER_ENTRY_NAME
+
+  const link = document.createElement('a')
+  link.className = 'ember-view sidebar-section-link sidebar-row'
+  link.href = browser.runtime.getURL('dist/manager/index.html?view=bookmarks')
+
+  const icon = document.createElement('span')
+  icon.className = 'sidebar-section-link-prefix icon i-material-symbols-kid-star-outline'
+
+  const text = document.createElement('span')
+  text.className = 'sidebar-section-link-content-text'
+  text.textContent = 'Doshelf 收藏'
+
+  link.append(icon, text)
+
+  link.addEventListener('click', (event) => {
+    event.preventDefault()
+    void openManagerPage()
+  })
+
+  item.append(link)
+
+  return item
+}
+
+function ensureSidebarManagerEntry() {
+  if (!isLinuxDoPage() || !document.body) return
+  if (document.getElementById(SIDEBAR_MANAGER_ENTRY_ID)) return
+
+  const list = findCommunitySidebarList()
+  if (!list) return
+
+  ensureContentStyle()
+  list.append(createSidebarManagerEntry())
 }
 
 function mountInlineButton(root: HTMLElement, mountPoint: HTMLElement) {
@@ -151,6 +212,7 @@ function createOverlayContainer() {
 function setupDoShelf() {
   teardownDoShelf()
   void syncEnhancementSettings()
+  ensureSidebarManagerEntry()
 
   if (!document.body || !isLinuxDoTopicPage()) return
 
@@ -187,6 +249,8 @@ function scheduleSetup() {
 }
 
 function handleUrlChange() {
+  ensureSidebarManagerEntry()
+
   if (location.href === lastUrl) return
 
   lastUrl = location.href
