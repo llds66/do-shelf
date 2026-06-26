@@ -1,7 +1,7 @@
 {
   "name": "do-shelf",
   "displayName": "DoShelf",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "private": true,
   "description": "Bookmark Linux.do topics into categories.",
   "license": "MIT",
