@@ -24,6 +24,23 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value)
 }
 
+function cloneTombstones(data: DoShelfData) {
+  return {
+    categories: { ...data.tombstones.categories },
+    bookmarks: { ...data.tombstones.bookmarks },
+    categoryBookmarks: { ...data.tombstones.categoryBookmarks },
+  }
+}
+
+function parseTombstoneMap(value: unknown) {
+  if (!isRecord(value)) return {}
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      (entry): entry is [string, number] => Boolean(entry[0]) && isFiniteNumber(entry[1]),
+    ),
+  )
+}
+
 function cloneCategories(categories: CategoryRecord[]) {
   return categories.map((category) => ({ ...category }))
 }
@@ -75,12 +92,15 @@ export function buildCategorySelectionOptions(data: DoShelfData) {
       if (left.order !== right.order) return left.order - right.order
       return left.name.localeCompare(right.name, 'zh-CN')
     })
-    .map((category) => ({
-      id: category.id,
-      name: category.name,
-      count: counts[category.id] || 0,
-      builtIn: category.builtIn,
-    }) satisfies CategorySelectionOption)
+    .map(
+      (category) =>
+        ({
+          id: category.id,
+          name: category.name,
+          count: counts[category.id] || 0,
+          builtIn: category.builtIn,
+        }) satisfies CategorySelectionOption,
+    )
 }
 
 export function buildExportFilename(exportedAt: number, appVersion: string) {
@@ -124,6 +144,13 @@ export function parseImportedShelfData(rawText: string) {
     categories: parsed.categories,
     bookmarks: parsed.bookmarks,
     categoryBookmarks: parsed.categoryBookmarks,
+    tombstones: isRecord(parsed.tombstones)
+      ? {
+          categories: parseTombstoneMap(parsed.tombstones.categories),
+          bookmarks: parseTombstoneMap(parsed.tombstones.bookmarks),
+          categoryBookmarks: parseTombstoneMap(parsed.tombstones.categoryBookmarks),
+        }
+      : { categories: {}, bookmarks: {}, categoryBookmarks: {} },
     settings: isRecord(parsed.settings) ? parsed.settings : {},
   } satisfies DoShelfData
 }
@@ -147,6 +174,7 @@ export function buildExportDataByCategoryIds(input: {
     categories: scopedData.categories,
     bookmarks: scopedData.bookmarks,
     categoryBookmarks: scopedData.categoryBookmarks,
+    tombstones: cloneTombstones(data),
     // 当前阶段导入导出都以分类为单位，设置不参与局部迁移
     settings: {},
   } satisfies DoShelfData
@@ -251,8 +279,13 @@ function mergeCategoryBookmarks(input: {
   validBookmarkIds: Set<string>
   bookmarkIdAliases: Map<string, string>
 }) {
-  const { currentRelations, importedRelations, validCategoryIds, validBookmarkIds, bookmarkIdAliases } =
-    input
+  const {
+    currentRelations,
+    importedRelations,
+    validCategoryIds,
+    validBookmarkIds,
+    bookmarkIdAliases,
+  } = input
   const relationByPair = new Map<string, CategoryBookmarkRecord>()
 
   function setRelation(relation: CategoryBookmarkRecord) {
@@ -303,6 +336,14 @@ function mergeCategoryScopedData(currentData: DoShelfData, importedData: DoShelf
     categories,
     bookmarks: bookmarkMergeResult.bookmarks,
     categoryBookmarks,
+    tombstones: {
+      categories: { ...currentData.tombstones.categories, ...importedData.tombstones.categories },
+      bookmarks: { ...currentData.tombstones.bookmarks, ...importedData.tombstones.bookmarks },
+      categoryBookmarks: {
+        ...currentData.tombstones.categoryBookmarks,
+        ...importedData.tombstones.categoryBookmarks,
+      },
+    },
     settings: cloneSettings(currentData.settings),
   } satisfies DoShelfData
 }
@@ -331,6 +372,7 @@ export function buildShelfDataForImportByCategory(input: {
       categories: scopedImportedData.categories,
       bookmarks: scopedImportedData.bookmarks,
       categoryBookmarks: scopedImportedData.categoryBookmarks,
+      tombstones: cloneTombstones(currentData),
       settings: cloneSettings(currentData.settings),
     } satisfies DoShelfData
   }

@@ -60,6 +60,19 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value)
 }
 
+function normalizeTombstoneMap(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      (entry): entry is [string, number] => Boolean(entry[0]) && isFiniteNumber(entry[1]),
+    ),
+  )
+}
+
+function markDeleted(target: Record<string, number>, ids: string[], deletedAt: number) {
+  for (const id of ids) target[id] = Math.max(target[id] || 0, deletedAt)
+}
+
 function sortCategories(categories: CategoryRecord[]) {
   return [...categories].sort((left, right) => {
     if (left.order !== right.order) return left.order - right.order
@@ -91,6 +104,7 @@ function createCategoryBookmarkRecord(input: {
   bookmarkId: string
   order: number
   createdAt: number
+  updatedAt?: number
 }) {
   return {
     id: input.id || crypto.randomUUID(),
@@ -98,6 +112,7 @@ function createCategoryBookmarkRecord(input: {
     bookmarkId: input.bookmarkId,
     order: input.order,
     createdAt: input.createdAt,
+    updatedAt: input.updatedAt,
   } satisfies CategoryBookmarkRecord
 }
 
@@ -209,6 +224,7 @@ function normalizeCategoryBookmarks(
       bookmarkId,
       order: isFiniteNumber(relation.order) ? relation.order : index,
       createdAt: isFiniteNumber(relation.createdAt) ? relation.createdAt : Date.now(),
+      updatedAt: isFiniteNumber(relation.updatedAt) ? relation.updatedAt : undefined,
     })
 
     if (!validCategoryIds.has(relation.categoryId)) continue
@@ -298,6 +314,16 @@ function normalizeShelfData(data: Partial<DoShelfData> | undefined): DoShelfData
   )
   const referencedBookmarkIds = new Set(categoryBookmarks.map((relation) => relation.bookmarkId))
   const normalizedBookmarks = bookmarks.filter((bookmark) => referencedBookmarkIds.has(bookmark.id))
+  const tombstones = {
+    categories: normalizeTombstoneMap(data?.tombstones?.categories),
+    bookmarks: normalizeTombstoneMap(data?.tombstones?.bookmarks),
+    categoryBookmarks: normalizeTombstoneMap(data?.tombstones?.categoryBookmarks),
+  }
+
+  // 本地仍存在的有效记录代表记录已恢复，不能继续被历史墓碑误删。
+  for (const category of categories) delete tombstones.categories[category.id]
+  for (const bookmark of normalizedBookmarks) delete tombstones.bookmarks[bookmark.id]
+  for (const relation of categoryBookmarks) delete tombstones.categoryBookmarks[relation.id]
 
   return {
     version: SHELF_DATA_VERSION,
@@ -305,6 +331,7 @@ function normalizeShelfData(data: Partial<DoShelfData> | undefined): DoShelfData
     categories,
     bookmarks: normalizedBookmarks,
     categoryBookmarks,
+    tombstones,
     settings:
       typeof data?.settings === 'object' && data.settings ? data.settings : emptyData.settings,
   }
@@ -344,7 +371,26 @@ export async function saveShelfData(data: DoShelfData) {
 }
 
 export async function clearShelfData() {
-  await browser.storage.local.remove(SHELF_DATA_KEY)
+  const data = await getShelfData()
+  const deletedAt = Date.now()
+  markDeleted(
+    data.tombstones.categories,
+    data.categories.filter((category) => !category.builtIn).map((category) => category.id),
+    deletedAt,
+  )
+  markDeleted(
+    data.tombstones.bookmarks,
+    data.bookmarks.map((bookmark) => bookmark.id),
+    deletedAt,
+  )
+  markDeleted(
+    data.tombstones.categoryBookmarks,
+    data.categoryBookmarks.map((relation) => relation.id),
+    deletedAt,
+  )
+  const emptyData = createEmptyShelfData()
+  emptyData.tombstones = data.tombstones
+  await saveShelfData(emptyData)
 }
 
 export async function getCategoryBookmarks(categoryId: string) {
@@ -449,9 +495,11 @@ export async function reorderBookmarksInCategory(categoryId: string, bookmarkIds
   const remainingRelations = currentRelations.filter(
     (relation) => !uniqueBookmarkIds.includes(relation.bookmarkId),
   )
+  const updatedAt = Date.now()
   const nextRelations = [...orderedRelations, ...remainingRelations].map((relation, index) => ({
     ...relation,
     order: index,
+    updatedAt,
   }))
 
   data.categoryBookmarks = [
@@ -478,6 +526,7 @@ export async function removeCategory(categoryId: string) {
   const nextCategoryBookmarks = data.categoryBookmarks.filter(
     (relation) => relation.categoryId !== categoryId,
   )
+  const deletedAt = Date.now()
 
   data.categories = data.categories.filter((item) => item.id !== categoryId)
   data.categoryBookmarks = nextCategoryBookmarks
@@ -487,6 +536,18 @@ export async function removeCategory(categoryId: string) {
     return nextCategoryBookmarks.some((relation) => relation.bookmarkId === bookmark.id)
   })
   const removedBookmarkCount = previousBookmarkCount - data.bookmarks.length
+  const remainingBookmarkIds = new Set(data.bookmarks.map((bookmark) => bookmark.id))
+  markDeleted(data.tombstones.categories, [categoryId], deletedAt)
+  markDeleted(
+    data.tombstones.categoryBookmarks,
+    removedRelations.map((relation) => relation.id),
+    deletedAt,
+  )
+  markDeleted(
+    data.tombstones.bookmarks,
+    Array.from(affectedBookmarkIds).filter((id) => !remainingBookmarkIds.has(id)),
+    deletedAt,
+  )
 
   await saveShelfData(data)
 
@@ -501,9 +562,19 @@ export async function deleteBookmark(bookmarkId: string) {
   const exists = data.bookmarks.some((bookmark) => bookmark.id === bookmarkId)
   if (!exists) return false
 
+  const deletedAt = Date.now()
+  const removedRelations = data.categoryBookmarks.filter(
+    (relation) => relation.bookmarkId === bookmarkId,
+  )
   data.bookmarks = data.bookmarks.filter((bookmark) => bookmark.id !== bookmarkId)
   data.categoryBookmarks = data.categoryBookmarks.filter(
     (relation) => relation.bookmarkId !== bookmarkId,
+  )
+  markDeleted(data.tombstones.bookmarks, [bookmarkId], deletedAt)
+  markDeleted(
+    data.tombstones.categoryBookmarks,
+    removedRelations.map((relation) => relation.id),
+    deletedAt,
   )
 
   await saveShelfData(data)
@@ -514,6 +585,10 @@ export async function removeBookmarkFromCategory(categoryId: string, bookmarkId:
   const data = await getShelfData()
   const previousLength = data.categoryBookmarks.length
 
+  const deletedAt = Date.now()
+  const removedRelations = data.categoryBookmarks.filter(
+    (relation) => relation.categoryId === categoryId && relation.bookmarkId === bookmarkId,
+  )
   data.categoryBookmarks = data.categoryBookmarks.filter(
     (relation) => !(relation.categoryId === categoryId && relation.bookmarkId === bookmarkId),
   )
@@ -530,6 +605,12 @@ export async function removeBookmarkFromCategory(categoryId: string, bookmarkId:
   )
   if (!stillReferenced)
     data.bookmarks = data.bookmarks.filter((bookmark) => bookmark.id !== bookmarkId)
+  markDeleted(
+    data.tombstones.categoryBookmarks,
+    removedRelations.map((relation) => relation.id),
+    deletedAt,
+  )
+  if (!stillReferenced) markDeleted(data.tombstones.bookmarks, [bookmarkId], deletedAt)
 
   await saveShelfData(data)
 
@@ -577,7 +658,9 @@ export async function saveBookmarkInCategories(input: SaveBookmarkInCategoriesIn
 
   data.categoryBookmarks = data.categoryBookmarks.filter((relation) => {
     if (relation.bookmarkId !== bookmark.id) return true
-    return selectedCategoryIdSet.has(relation.categoryId)
+    if (selectedCategoryIdSet.has(relation.categoryId)) return true
+    markDeleted(data.tombstones.categoryBookmarks, [relation.id], now)
+    return false
   })
 
   const existingCategoryIds = new Set(
@@ -595,6 +678,7 @@ export async function saveBookmarkInCategories(input: SaveBookmarkInCategoriesIn
       bookmarkId: bookmark.id,
       order: getNextCategoryBookmarkOrder(categoryId, data.categoryBookmarks),
       createdAt: now,
+      updatedAt: now,
     })
   }
 

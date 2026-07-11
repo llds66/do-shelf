@@ -20,6 +20,13 @@ import {
   saveExtensionSettings,
 } from '~/shared/settings'
 import { clearShelfData, getShelfData, saveShelfData } from '~/shared/storage'
+import {
+  getWebDavSettings,
+  normalizeWebDavSettings,
+  saveWebDavSettings,
+  syncBookmarksWithWebDav,
+  type WebDavSettings,
+} from '~/shared/webdav'
 
 const {
   totalBookmarks,
@@ -35,12 +42,17 @@ const isImporting = ref(false)
 const isExporting = ref(false)
 const isClearing = ref(false)
 const isSavingSettings = ref(false)
+const isSavingWebDavSettings = ref(false)
+const isSyncingWebDav = ref(false)
 const extensionSettings = ref(normalizeExtensionSettings(undefined))
+const webDavSettings = ref(normalizeWebDavSettings(undefined))
+const webDavForm = ref<WebDavSettings>(normalizeWebDavSettings(undefined))
 const animatedTotalCategories = ref(0)
 const animatedTotalBookmarks = ref(0)
 const showImportConfirm = ref(false)
 const showExportConfirm = ref(false)
 const showClearConfirm = ref(false)
+const showWebDavSettingsModal = ref(false)
 const pendingImportFilename = ref('')
 const pendingImportData = ref<DoShelfData | null>(null)
 const exportCategoryIds = ref<string[]>([])
@@ -56,6 +68,10 @@ const canConfirmImport = computed(
   () => Boolean(pendingImportData.value) && importCategoryIds.value.length > 0,
 )
 const canConfirmExport = computed(() => exportCategoryIds.value.length > 0)
+const hasWebDavSettings = computed(() => {
+  const settings = webDavSettings.value
+  return Boolean(settings.serverUrl && settings.username && settings.password)
+})
 const selectedExportCategoryLabels = computed(() =>
   exportCategoryOptions.value
     .filter((category) => exportCategoryIds.value.includes(category.id))
@@ -149,6 +165,47 @@ function resetClearState() {
 
 async function openExternalLink(url: string) {
   await browser.tabs.create({ url })
+}
+
+function openWebDavSettingsModal() {
+  webDavForm.value = { ...webDavSettings.value }
+  showWebDavSettingsModal.value = true
+}
+
+async function handleSaveWebDavSettings() {
+  if (isSavingWebDavSettings.value) return
+  isSavingWebDavSettings.value = true
+
+  try {
+    webDavSettings.value = await saveWebDavSettings(webDavForm.value)
+    showWebDavSettingsModal.value = false
+    showSuccessMessage('WebDAV 设置已保存')
+  } catch (error) {
+    showErrorMessage(error instanceof Error ? error.message : 'WebDAV 设置保存失败')
+  } finally {
+    isSavingWebDavSettings.value = false
+  }
+}
+
+async function handleWebDavSync() {
+  if (isSyncingWebDav.value) return
+  if (!hasWebDavSettings.value) {
+    openWebDavSettingsModal()
+    showErrorMessage('请先完成 WebDAV 同步设置')
+    return
+  }
+
+  isSyncingWebDav.value = true
+  try {
+    const mergedData = await syncBookmarksWithWebDav(webDavSettings.value, await getShelfData())
+    await saveShelfData(mergedData)
+    await refreshData()
+    showSuccessMessage('书签数据已同步到 WebDAV')
+  } catch (error) {
+    showErrorMessage(error instanceof Error ? error.message : 'WebDAV 同步失败')
+  } finally {
+    isSyncingWebDav.value = false
+  }
 }
 
 async function updateConciseMode(value: boolean) {
@@ -277,7 +334,12 @@ async function handleConfirmExport() {
 
 onMounted(async () => {
   syncAnimatedTotals()
-  extensionSettings.value = await getExtensionSettings()
+  const [loadedExtensionSettings, loadedWebDavSettings] = await Promise.all([
+    getExtensionSettings(),
+    getWebDavSettings(),
+  ])
+  extensionSettings.value = loadedExtensionSettings
+  webDavSettings.value = loadedWebDavSettings
   browser.storage.onChanged.addListener(handleSettingsStorageChange)
 })
 
@@ -337,6 +399,18 @@ onBeforeUnmount(() => {
                 <div class="i-lucide-file-down h-[16px] w-[16px] text-[16px]" />
               </template>
               导出数据
+            </n-button>
+            <n-button secondary @click="openWebDavSettingsModal">
+              <template #icon>
+                <div class="i-lucide-cloud-cog h-[16px] w-[16px] text-[16px]" />
+              </template>
+              WebDAV 同步设置
+            </n-button>
+            <n-button secondary :loading="isSyncingWebDav" @click="handleWebDavSync">
+              <template #icon>
+                <div class="i-lucide-cloud-upload h-[16px] w-[16px] text-[16px]" />
+              </template>
+              同步数据
             </n-button>
             <n-button type="error" secondary :loading="isClearing" @click="openClearConfirm">
               <template #icon>
@@ -422,6 +496,56 @@ onBeforeUnmount(() => {
       创建
     </div>
   </div>
+
+  <n-modal
+    v-model:show="showWebDavSettingsModal"
+    preset="card"
+    class="w-[min(520px,calc(100vw-32px))]"
+    :bordered="false"
+    title="WebDAV 同步设置"
+  >
+    <div class="grid gap-4 pt-2">
+      <div>
+        <div class="mb-2 text-[13px] font-700 text-neutral-300">服务器地址</div>
+        <n-input
+          v-model:value="webDavForm.serverUrl"
+          placeholder="https://dav.jianguoyun.com/dav/"
+          :disabled="isSavingWebDavSettings"
+        />
+      </div>
+      <div>
+        <div class="mb-2 text-[13px] font-700 text-neutral-300">账号</div>
+        <n-input
+          v-model:value="webDavForm.username"
+          placeholder="请输入 WebDAV 账号"
+          :disabled="isSavingWebDavSettings"
+        />
+      </div>
+      <div>
+        <div class="mb-2 text-[13px] font-700 text-neutral-300">密码 / 应用授权码</div>
+        <n-input
+          v-model:value="webDavForm.password"
+          type="password"
+          show-password-on="click"
+          placeholder="请输入密码或应用授权码"
+          :disabled="isSavingWebDavSettings"
+          @keydown.enter.prevent="handleSaveWebDavSettings"
+        />
+      </div>
+      <div class="text-[12px] leading-5 text-neutral-500">
+        远程位置固定为 do-shelf/do-shelf.json，仅同步分类、收藏和排序数据。
+      </div>
+    </div>
+
+    <div class="mt-5 flex justify-end gap-3">
+      <n-button :disabled="isSavingWebDavSettings" @click="showWebDavSettingsModal = false">
+        取消
+      </n-button>
+      <n-button type="primary" :loading="isSavingWebDavSettings" @click="handleSaveWebDavSettings">
+        保存设置
+      </n-button>
+    </div>
+  </n-modal>
 
   <n-modal
     v-model:show="showExportConfirm"

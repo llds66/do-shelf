@@ -42,6 +42,7 @@ export async function getManifest() {
       512: 'assets/icon-512.png',
     },
     permissions: ['storage'],
+    optional_host_permissions: ['https://*/*', 'http://*/*'],
     content_scripts: [
       {
         matches: ['https://linux.do/*'],

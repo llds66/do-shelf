@@ -1,4 +1,4 @@
-export const SHELF_DATA_VERSION = 2 as const
+export const SHELF_DATA_VERSION = 3 as const
 export const SHELF_DATA_KEY = 'do-shelf:data'
 
 export const ALL_CATEGORY_VIEW_ID = 'all'
@@ -31,6 +31,13 @@ export interface CategoryBookmarkRecord {
   bookmarkId: string
   order: number
   createdAt: number
+  updatedAt?: number
+}
+
+export interface SyncTombstones {
+  categories: Record<string, number>
+  bookmarks: Record<string, number>
+  categoryBookmarks: Record<string, number>
 }
 
 export interface DoShelfData {
@@ -42,6 +49,7 @@ export interface DoShelfData {
   categories: CategoryRecord[]
   bookmarks: BookmarkRecord[]
   categoryBookmarks: CategoryBookmarkRecord[]
+  tombstones: SyncTombstones
   settings?: Record<string, unknown>
 }
 
@@ -66,6 +74,11 @@ export function createEmptyShelfData(): DoShelfData {
     categories: DEFAULT_CATEGORIES.map((category) => ({ ...category })),
     bookmarks: [],
     categoryBookmarks: [],
+    tombstones: {
+      categories: {},
+      bookmarks: {},
+      categoryBookmarks: {},
+    },
     settings: {},
   }
 }
