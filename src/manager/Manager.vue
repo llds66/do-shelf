@@ -91,16 +91,29 @@ onMounted(() => {
               />
             </div>
 
-            <div class="mt-auto hidden px-5 pb-3 lg:block">
+            <div class="mt-auto hidden px-4 pb-4 lg:block">
               <a
                 href="https://doshelf.llds.cloud/"
                 target="_blank"
                 rel="noopener noreferrer"
-                class="project-link no-underline flex items-center justify-center gap-3 text-[13px] text-neutral-400"
+                class="project-link flex items-center gap-3 rounded-2xl border border-white/8 bg-white/4 px-3 py-2.5 no-underline"
               >
-                <img :src="logoUrl" alt="DoShelf logo" class="h-6 w-6 rounded-md object-cover" />
-                <span class="mt-1 font-700 text-neutral-300">DoShelf</span>
-                <span class="mt-1 text-[11px] text-neutral-500">v{{ appVersion }}</span>
+                <img
+                  :src="logoUrl"
+                  alt="DoShelf logo"
+                  class="h-8 w-8 shrink-0 rounded-lg object-cover shadow-sm"
+                />
+                <span class="min-w-0 flex-1">
+                  <span class="block truncate text-[13px] font-700 leading-5 text-neutral-200">
+                    DoShelf
+                  </span>
+                  <span class="block text-[11px] leading-4 text-neutral-500">
+                    v{{ appVersion }}
+                  </span>
+                </span>
+                <span
+                  class="i-lucide-external-link h-[14px] w-[14px] shrink-0 text-[14px] text-neutral-500"
+                />
               </a>
             </div>
           </section>
@@ -133,12 +146,15 @@ onMounted(() => {
 
 .project-link {
   transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
     color 160ms ease,
-    opacity 160ms ease;
+    transform 160ms ease;
 }
 
 .project-link:hover {
-  color: white;
-  opacity: 0.96;
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.07);
+  transform: translateY(-1px);
 }
 </style>

@@ -257,7 +257,9 @@ async function handleConfirmExport() {
       appVersion,
     })
     const payload = JSON.stringify(exportData, null, 2)
-    const blob = new Blob([payload], { type: 'application/json;charset=utf-8' })
+    const blob = new Blob([payload], {
+      type: 'application/json;charset=utf-8',
+    })
     const objectUrl = URL.createObjectURL(blob)
     const anchor = document.createElement('a')
 
@@ -300,18 +302,30 @@ onBeforeUnmount(() => {
     />
     <n-scrollbar class="min-h-0 flex-1 py-5">
       <div class="grid gap-4">
-        <n-card :bordered="false" title="数据">
-          <template #header-extra>
-            <div class="flex gap-2">
-              <div class="text-[12px] font-700">
-                <NumberFlow :value="animatedTotalCategories" /> 个分类
+        <n-card :bordered="false" title="数据" content-class="relative overflow-hidden">
+          <div
+            class="pointer-events-none absolute inset-y-0 right-3 flex items-center gap-4 select-none sm:right-5 sm:gap-8"
+            aria-hidden="true"
+          >
+            <div class="text-right">
+              <div
+                class="text-[34px] font-800 leading-none tracking-tight text-white/8 sm:text-[42px]"
+              >
+                <NumberFlow :value="animatedTotalCategories" />
               </div>
-              <div class="text-[12px] font-700">
-                <NumberFlow :value="animatedTotalBookmarks" /> 条收藏
-              </div>
+              <div class="mt-1 text-[11px] font-700 tracking-[0.18em] text-white/12">分类</div>
             </div>
-          </template>
-          <div class="my-4 flex flex-wrap gap-4">
+            <div class="text-right">
+              <div
+                class="text-[34px] font-800 leading-none tracking-tight text-white/8 sm:text-[42px]"
+              >
+                <NumberFlow :value="animatedTotalBookmarks" />
+              </div>
+              <div class="mt-1 text-[11px] font-700 tracking-[0.18em] text-white/12">收藏</div>
+            </div>
+          </div>
+
+          <div class="relative z-1 my-4 flex flex-wrap gap-4">
             <n-button secondary :loading="isImporting" @click="openImportPicker">
               <template #icon>
                 <div class="i-lucide-file-up h-[16px] w-[16px] text-[16px]" />
@@ -349,68 +363,45 @@ onBeforeUnmount(() => {
             </div>
           </div>
         </n-card>
-
-        <n-card :bordered="false" title="相关链接">
-          <div class="my-4 flex flex-wrap gap-4">
-            <n-button secondary text @click="openExternalLink('https://doshelf.llds.cloud/')">
-              <template #icon>
-                <div class="i-lucide-link h-[16px] w-[16px] text-[16px]" />
-              </template>
-              官方网站
-            </n-button>
-            <n-button
-              secondary
-              text
-              @click="
-                openExternalLink(
-                  'https://chromewebstore.google.com/detail/doshelf/cimpakecpbafknbammmnpiifekgjmbkl',
-                )
-              "
-            >
-              <template #icon>
-                <div class="i-logos-chrome h-[16px] w-[16px] text-[16px]" />
-              </template>
-              Chrome 商店
-            </n-button>
-            <n-button
-              secondary
-              text
-              @click="
-                openExternalLink(
-                  'https://microsoftedge.microsoft.com/addons/detail/doshelf/bmloldgelbkhglnaoghflbfdbojogfjg',
-                )
-              "
-            >
-              <template #icon>
-                <div class="i-logos-microsoft-edge h-[16px] w-[16px] text-[16px]" />
-              </template>
-              Edge 商店
-            </n-button>
-            <n-button
-              secondary
-              text
-              @click="openExternalLink('https://github.com/llds66/do-shelf')"
-            >
-              <template #icon>
-                <div class="i-lucide-github h-[16px] w-[16px] text-[16px]" />
-              </template>
-              Github
-            </n-button>
-          </div>
-        </n-card>
       </div>
     </n-scrollbar>
 
     <div class="px-5 pb-5 pt-2 text-center text-sm leading-6 text-neutral-500">
-      <a
-        href="https://github.com/llds66/do-shelf"
-        target="_blank"
-        rel="noopener noreferrer"
-        class="mx-1 text-neutral-500 no-underline transition-colors duration-150 hover:text-neutral-300"
-      >
-        项目地址
-      </a>
-      | 基于
+      <div class="mb-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
+        <n-button text @click="openExternalLink('https://doshelf.llds.cloud/')">
+          <template #icon><div class="i-lucide-link h-[16px] w-[16px] text-[16px]" /></template>
+          官方网站
+        </n-button>
+        <n-button text @click="openExternalLink('https://github.com/llds66/do-shelf')">
+          <template #icon><div class="i-lucide-github h-[16px] w-[16px] text-[16px]" /></template>
+          Github
+        </n-button>
+        <n-button
+          text
+          @click="
+            openExternalLink(
+              'https://chromewebstore.google.com/detail/doshelf/cimpakecpbafknbammmnpiifekgjmbkl',
+            )
+          "
+        >
+          <template #icon><div class="i-logos-chrome h-[16px] w-[16px] text-[16px]" /></template>
+          Chrome 商店
+        </n-button>
+        <n-button
+          text
+          @click="
+            openExternalLink(
+              'https://microsoftedge.microsoft.com/addons/detail/doshelf/bmloldgelbkhglnaoghflbfdbojogfjg',
+            )
+          "
+        >
+          <template #icon
+            ><div class="i-logos-microsoft-edge h-[16px] w-[16px] text-[16px]"
+          /></template>
+          Edge 商店
+        </n-button>
+      </div>
+      基于
       <a
         href="https://github.com/antfu-collective/vitesse-webext"
         target="_blank"
@@ -419,15 +410,16 @@ onBeforeUnmount(() => {
       >
         vitesse-webext
       </a>
-      |
+      | 由
       <a
         href="https://lsang.me"
         target="_blank"
         rel="noopener noreferrer"
         class="mx-1 text-neutral-500 no-underline transition-colors duration-150 hover:text-neutral-300"
       >
-        @LsAng
+        lsang
       </a>
+      创建
     </div>
   </div>
 
@@ -447,7 +439,9 @@ onBeforeUnmount(() => {
         class="flex min-w-0 items-start justify-between rounded-2xl border border-white/8 bg-white/4 px-3 py-3"
       >
         <div class="flex min-w-0 items-center gap-2 pr-3">
-          <div class="truncate text-[14px] text-neutral-200">{{ category.name }}</div>
+          <div class="truncate text-[14px] text-neutral-200">
+            {{ category.name }}
+          </div>
           <div class="shrink-0 text-[12px] text-neutral-500">{{ category.count }} 条</div>
         </div>
         <n-checkbox
@@ -494,7 +488,9 @@ onBeforeUnmount(() => {
         class="flex min-w-0 items-start justify-between rounded-2xl border border-white/8 bg-white/4 px-3 py-3"
       >
         <div class="flex min-w-0 items-center gap-2 pr-3">
-          <div class="truncate text-[14px] text-neutral-200">{{ category.name }}</div>
+          <div class="truncate text-[14px] text-neutral-200">
+            {{ category.name }}
+          </div>
           <div class="shrink-0 text-[12px] text-neutral-500">{{ category.count }} 条</div>
         </div>
         <n-checkbox
@@ -555,7 +551,9 @@ onBeforeUnmount(() => {
     title="清空全部数据"
   >
     <div class="text-[14px] leading-6 text-neutral-300">
-      输入 <span class="font-700 text-white">do-shelf</span> 后点击确认，将清空本地标签数据。
+      输入
+      <span class="font-700 text-white">do-shelf</span>
+      后点击确认，将清空本地标签数据。
     </div>
 
     <div class="mt-4">

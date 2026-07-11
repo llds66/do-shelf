@@ -367,8 +367,8 @@ onBeforeUnmount(() => {
       </n-input>
 
       <n-scrollbar class="min-h-0 flex-1 py-5">
-        <section v-if="bookmarkListItems.length" class="flex flex-col gap-3">
-          <div ref="bookmarkListRef" class="flex flex-col gap-3">
+        <section v-if="bookmarkListItems.length" class="flex flex-col gap-2">
+          <div ref="bookmarkListRef" class="flex flex-col gap-2">
             <n-card
               v-for="bookmark in bookmarkListItems"
               :key="bookmark.id"
@@ -376,11 +376,11 @@ onBeforeUnmount(() => {
               :bordered="false"
               content-class="!p-0"
             >
-              <div class="flex items-center gap-3 px-4 py-3">
+              <div class="flex items-center gap-2.5 px-3 py-2">
                 <button
                   v-if="!isAllCategoryViewSelected"
                   type="button"
-                  class="bookmark-drag-handle inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/8 bg-white/3 text-neutral-400 transition hover:border-white/14 hover:text-neutral-200"
+                  class="bookmark-drag-handle inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/8 bg-white/3 text-neutral-400 transition hover:border-white/14 hover:text-neutral-200"
                   :class="
                     canDragSortBookmarks
                       ? 'cursor-grab active:cursor-grabbing'
@@ -390,24 +390,24 @@ onBeforeUnmount(() => {
                   :aria-label="hasBookmarkSearchKeyword ? '搜索结果中暂不支持排序' : '拖动排序'"
                   :title="hasBookmarkSearchKeyword ? '搜索结果中暂不支持排序' : '拖动排序'"
                 >
-                  <div class="i-lucide-grip h-[16px] w-[16px] text-[16px]" />
+                  <div class="i-lucide-grip h-[10px] w-[10px] text-[10px]" />
                 </button>
 
                 <img
                   v-if="bookmark.faviconUrl"
                   :src="bookmark.faviconUrl"
                   alt=""
-                  class="h-5 w-5 shrink-0 rounded-sm"
+                  class="h-[18px] w-[18px] shrink-0 rounded-sm"
                 />
 
                 <div class="min-w-0 flex-1">
-                  <div class="flex flex-wrap items-center gap-2">
+                  <div class="flex flex-wrap items-center gap-1.5">
                     <n-button
                       text
-                      class="min-w-0 flex-1 justify-start !px-0 text-left !text-[15px] !font-700 !text-neutral-300 hover:text-neutral-100!"
+                      class="min-w-0 flex-1 justify-start !px-0 text-left !text-[14px] !font-700 !text-neutral-300 hover:text-neutral-100!"
                       @click="openBookmark(bookmark.url)"
                     >
-                      <n-ellipsis style="max-width: 650px">
+                      <n-ellipsis style="max-width: 600px">
                         {{ bookmark.title }}
                       </n-ellipsis>
                     </n-button>
@@ -430,7 +430,7 @@ onBeforeUnmount(() => {
                   </div>
                 </div>
 
-                <div class="flex shrink-0 items-center gap-2">
+                <div class="flex shrink-0 items-center gap-1">
                   <n-dropdown
                     trigger="click"
                     :options="BOOKMARK_ACTION_OPTIONS"
@@ -442,9 +442,9 @@ onBeforeUnmount(() => {
                       text
                       quaternary
                       circle
-                      class="!h-8 !w-8 !text-neutral-300 hover:!text-white"
+                      class="!h-7 !w-7 !text-neutral-300 hover:!text-white"
                     >
-                      <div class="i-lucide-ellipsis h-[18px] w-[18px] text-[18px]" />
+                      <div class="i-lucide-ellipsis h-[16px] w-[16px] text-[16px]" />
                     </n-button>
                   </n-dropdown>
 
@@ -459,10 +459,10 @@ onBeforeUnmount(() => {
                         text
                         quaternary
                         circle
-                        class="!h-8 !w-8 !text-neutral-300 hover:!text-white"
+                        class="!h-7 !w-7 !text-neutral-300 hover:!text-white"
                         :loading="removingFromCategoryBookmarkId === bookmark.id"
                       >
-                        <div class="i-lucide-trash-2 h-[18px] w-[18px] text-[18px]" />
+                        <div class="i-lucide-trash-2 h-[16px] w-[16px] text-[16px]" />
                       </n-button>
                     </template>
                     该标签将从此分类移除
@@ -480,10 +480,10 @@ onBeforeUnmount(() => {
                         type="error"
                         quaternary
                         circle
-                        class="!h-8 !w-8 !text-neutral-300 hover:!text-white"
+                        class="!h-7 !w-7 !text-neutral-300 hover:!text-white"
                         :loading="removingBookmarkId === bookmark.id"
                       >
-                        <div class="i-lucide-trash-2 h-[18px] w-[18px] text-[18px]" />
+                        <div class="i-lucide-trash-2 h-[16px] w-[16px] text-[16px]" />
                       </n-button>
                     </template>
                     该收藏将从所有分类移除

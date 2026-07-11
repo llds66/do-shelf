@@ -209,21 +209,21 @@ onBeforeUnmount(() => {
 
     <n-scrollbar class="min-h-0 flex-1 py-5">
       <div class="category-manager-scroll pr-1">
-        <div ref="categoryManagerListRef" class="flex flex-col gap-1.5">
+        <div ref="categoryManagerListRef" class="flex flex-col gap-2">
           <div
             v-for="category in managerCategoryItems"
             :key="category.id"
-            class="category-manager-item flex items-center justify-between gap-3 rounded-2xl border border-white/8 bg-white/4 px-3 py-2.5 transition-colors"
+            class="category-manager-item flex items-center justify-between gap-2.5 rounded-2xl border border-white/8 bg-white/4 px-3 py-2 transition-colors"
           >
-            <div class="min-w-0 flex items-center gap-3">
+            <div class="min-w-0 flex items-center gap-2.5">
               <button
                 type="button"
-                class="category-manager-drag-handle inline-flex h-8 w-8 shrink-0 cursor-grab items-center justify-center rounded-full border border-white/8 bg-white/3 text-neutral-400 transition hover:border-white/14 hover:text-neutral-200 active:cursor-grabbing"
+                class="category-manager-drag-handle inline-flex h-7 w-7 shrink-0 cursor-grab items-center justify-center rounded-full border border-white/8 bg-white/3 text-neutral-400 transition hover:border-white/14 hover:text-neutral-200 active:cursor-grabbing"
                 :disabled="isReorderingCategories"
                 aria-label="拖动排序"
                 title="拖动排序"
               >
-                <div class="i-lucide-grip h-[16px] w-[16px] text-[16px]" />
+                <div class="i-lucide-grip h-[10px] w-[10px] text-[10px]" />
               </button>
 
               <div class="min-w-0">
@@ -237,13 +237,13 @@ onBeforeUnmount(() => {
               </div>
             </div>
 
-            <div class="flex shrink-0 items-center gap-1.5">
+            <div class="flex shrink-0 items-center gap-1">
               <n-button
                 v-if="!isDefaultCategory(category.id)"
                 text
                 quaternary
                 circle
-                class="!h-8 !w-8 !text-neutral-300 hover:!text-white"
+                class="!h-7 !w-7 !text-neutral-300 hover:!text-white"
                 :disabled="isReorderingCategories"
                 @click="openRenameModal(category)"
               >
@@ -261,11 +261,11 @@ onBeforeUnmount(() => {
                     type="error"
                     quaternary
                     circle
-                    class="!h-8 !w-8 !text-neutral-300 hover:!text-white"
+                    class="!h-7 !w-7 !text-neutral-300 hover:!text-white"
                     :disabled="isReorderingCategories"
                     :loading="deletingCategoryId === category.id"
                   >
-                    <div class="i-lucide-trash-2 h-[18px] w-[18px] text-[18px]" />
+                    <div class="i-lucide-trash-2 h-[16px] w-[16px] text-[16px]" />
                   </n-button>
                 </template>
                 删除分类“{{ category.name }}”？若相关收藏不再属于其他分类，它们会被一并删除。
